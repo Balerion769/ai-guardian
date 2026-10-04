@@ -34,6 +34,8 @@ class Vulnerability(StrictModel):
     description: str = Field(min_length=1)
     line_reference: str = Field(min_length=1)
     remediation: str = Field(min_length=1)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    tainted: bool = False
 
 
 class AuditResponse(StrictModel):
@@ -43,3 +45,13 @@ class AuditResponse(StrictModel):
     risk_score: int = Field(ge=0, le=100)
     vulnerabilities: list[Vulnerability]
     summary: str = Field(min_length=1)
+    static_count: int = Field(ge=0)
+    ai_count: int = Field(ge=0)
+    latency_ms: float = Field(ge=0)
+    model_used: str = Field(min_length=1)
+
+
+class LLMFinding(Vulnerability):
+    """An Ollama finding requires an explicit calibrated confidence value."""
+
+    confidence: float = Field(ge=0.0, le=1.0)

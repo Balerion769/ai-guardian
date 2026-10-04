@@ -1,0 +1,128 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aiguardian}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-aiguardian_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-change-me-before-production}
+    volumes:
+      - aiguardian_prod_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-aiguardian_admin} -d ${POSTGRES_DB:-aiguardian}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - aiguardian_prod_redis:/data
+    restart: unless-stopped
+
+  db-init:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile.api
+    command: ["python", "-m", "dashboard.db.migrate"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_ADMIN_USER:-aiguardian_admin}:${POSTGRES_ADMIN_PASSWORD:-change-me-before-production}@postgres:5432/${POSTGRES_DB:-aiguardian}
+      AIGUARDIAN_DB_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-change-me-app-before-production}
+      APP_DATABASE_ROLE: ${APP_DATABASE_ROLE:-aiguardian_app}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile.api
+    environment: &prod_env
+      AIGUARDIAN_MODE: hosted
+      DATABASE_URL: postgresql+psycopg://${APP_DATABASE_ROLE:-aiguardian_app}:${POSTGRES_APP_PASSWORD:-change-me-app-before-production}@postgres:5432/${POSTGRES_DB:-aiguardian}
+      REDIS_URL: redis://redis:6379/0
+      DASHBOARD_DEV_MODE: "0"
+      DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:-change-me-session-secret-at-least-32-characters}
+      DASHBOARD_TOKEN_ENCRYPTION_KEY: ${DASHBOARD_TOKEN_ENCRYPTION_KEY:-ZGV2LWVuY3J5cHRpb24ta2V5LWNoYW5nZS1tZQ==}
+      DASHBOARD_PUBLIC_BASE_URL: ${DASHBOARD_PUBLIC_BASE_URL:-https://localhost}
+      DASHBOARD_WEB_BASE_URL: ${DASHBOARD_WEB_BASE_URL:-https://localhost}
+      GITHUB_API_URL: ${GITHUB_API_URL:-https://api.github.com}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-https://localhost/api/v1/auth/github/callback}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
+      GITHUB_APP_INSTALL_URL: ${GITHUB_APP_INSTALL_URL:-https://github.com/apps/ai-guardian/installations/new}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434/api/generate}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+      STRIPE_PRICE_TEAM: ${STRIPE_PRICE_TEAM:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+    ports:
+      - "${AIGUARDIAN_API_PORT:-8000}:8000"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile.worker
+    environment: *prod_env
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "rq info --url redis://redis:6379/0 | grep -q audits"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    restart: unless-stopped
+
+  web:
+    build:
+      context: dashboard/web
+      dockerfile: Dockerfile
+    environment:
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://localhost}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-nextauth-secret-at-least-32-characters}
+      BACKEND_API_URL: ${BACKEND_API_URL:-http://api:8000}
+      GITHUB_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      NEXT_PUBLIC_GITHUB_APP_INSTALL_URL: ${GITHUB_APP_INSTALL_URL:-https://github.com/apps/ai-guardian/installations/new}
+    ports:
+      - "${AIGUARDIAN_WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:3000/login"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  aiguardian_prod_postgres:
+  aiguardian_prod_redis:

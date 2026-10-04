@@ -1,0 +1,17 @@
+{
+  "name": "AI Guardian",
+  "url": "https://dashboard.example.com",
+  "hook_attributes": {
+    "url": "https://api.example.com/api/v1/webhooks/github",
+    "active": true
+  },
+  "redirect_url": "https://api.example.com/api/v1/auth/github/callback",
+  "description": "Local-first pull request security audits",
+  "public": false,
+  "default_permissions": {
+    "contents": "read",
+    "pull_requests": "write",
+    "checks": "write"
+  },
+  "default_events": ["pull_request"]
+}

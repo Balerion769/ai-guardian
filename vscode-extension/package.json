@@ -1,0 +1,32 @@
+{
+  "name": "ai-guardian",
+  "displayName": "AI Guardian - Local Security",
+  "description": "Catches eval, SQLi, and secrets locally. Your code stays on your machine with the default API URL.",
+  "version": "0.1.0",
+  "publisher": "balerion769",
+  "engines": {"vscode": "^1.85.0"},
+  "categories": ["Linters"],
+  "activationEvents": ["onLanguage:python", "onLanguage:javascript", "onLanguage:typescript", "onCommand:aiGuardian.auditFile"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "AI Guardian",
+      "properties": {
+        "aiGuardian.apiUrl": {"type": "string", "default": "http://localhost:8000/api/v1/audit", "description": "Audit API URL. A remote URL sends source code to that server."},
+        "aiGuardian.runOnSave": {"type": "boolean", "default": true, "description": "Audit supported files when saved."},
+        "aiGuardian.runOnType": {"type": "boolean", "default": false, "description": "Audit supported files after a short typing pause."}
+      }
+    },
+    "commands": [{"command": "aiGuardian.auditFile", "title": "AI Guardian: Audit Current File"}]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test tests/*.test.cjs"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,65 +1,72 @@
-# AIGuardian system design
+# AIGuardian architecture
 
-## Purpose and scope
+## Request flow
 
-AIGuardian exposes one local HTTP endpoint to review a Git patch or code snippet for security issues. It runs a deterministic rules pass and a semantic model pass, merges findings, and returns a structured result. It is a single process API with an external Ollama service. There is no persistence or GitHub webhook integration.
+`POST /api/v1/audit` accepts strict `AuditRequest` fields `diff_content` and `language`. Pydantic rejects unknown fields and inputs over 200,000 characters; the route rejects more than 2,000 added lines with HTTP 413. SlowAPI limits the route to 60 requests per minute per client IP.
 
-## Components
+The route records a SHA-256 hash of the submitted text for diagnostics. It runs `StaticAnalyzer`, then the Python taint pass, then Ollama review. Results are combined by normalized category and line; the higher severity wins. The response contains `status`, `risk_score`, `vulnerabilities`, `summary`, `static_count`, `ai_count`, `latency_ms`, and `model_used`. Each finding has severity, category, description, line reference, remediation, confidence, and a taint marker.
 
-| Component | Responsibility | Dependencies |
-| --- | --- | --- |
-| `main.py` | Expose `POST /api/v1/audit`, call both passes, deduplicate findings, score risk, map Ollama errors to HTTP 503 | FastAPI, `httpx`, scanner modules |
-| `scanner/models.py` | Strictly validate the request, findings, and response | Pydantic |
-| `scanner/static_rules.py` | Apply compiled regex rules to added patch lines or all snippet lines | `Vulnerability` model |
-| `scanner/ai_auditor.py` | Send input to Ollama and validate its JSON findings | `httpx`, Pydantic, Ollama HTTP API |
-| Ollama | Run the selected language model | Downloaded model and machine resources |
+`GET /health` reports process status and the configured model name. `GET /metrics` reports process-local audit/finding counts. Health does not probe Ollama.
 
-## Request path
+## Static syntax analysis
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant F as FastAPI
-    participant S as StaticAnalyzer
-    participant A as AIAuditor
-    participant O as Ollama
-    C->>F: POST /api/v1/audit {diff_content, language}
-    F->>F: Validate with AuditRequest
-    F->>S: analyze(diff_content, language)
-    S-->>F: Static findings
-    F->>A: analyze(diff_content, language)
-    A->>O: POST /api/generate (schema, prompt, model)
-    O-->>A: JSON response envelope
-    A->>A: Parse and validate findings
-    A-->>F: Model findings
-    F->>F: Deduplicate, score, set status
-    F-->>C: AuditResponse JSON
-```
+`scanner/static_rules.py` reconstructs new-file line numbers from Git hunks and selects only added lines; plain snippets treat every line as added. The public `get_added_lines` helper returns `(line_number, text)` pairs. Candidate windows keep 200,000-character scans bounded. Python uses `ast`; JavaScript and TypeScript use tree-sitter, with esprima as a JavaScript fallback. Dotenv assignments use key/value parsing because that format has no Python or JavaScript AST.
 
-The calls are sequential: static analysis completes before the Ollama request starts. Each request constructs an `AIAuditor`; without an injected test client it opens an `httpx.AsyncClient` for that model call. No audit is stored after the response.
+Twenty rule families cover dynamic execution, command and SQL injection, embedded secrets, traversal, SSRF, template injection, deserialization, weak crypto, signing keys, DOM XSS, wildcard CORS, debug mode, fixed private-IP calls, disabled TLS verification, world-writable permissions, and insecure temporary files. Findings include a replacement code example. More than 128 suspicious lines produce a high-severity `Analysis Incomplete` finding rather than silently sampling. Incomplete hunks can lose multiline context; unsupported languages have no static syntax rules.
 
-## Input and output contracts
+`scanner/taint.py` tracks Python `request.args/form/json/values`, `flask.request`, `input()`, `sys.argv`, and `os.environ.get` through local assignments to selected sinks. A parameterized SQL query is not reported solely because its parameter value is tainted. This analysis is intraprocedural and neither branch-sensitive nor alias-complete.
 
-`AuditRequest` requires nonblank string fields `diff_content` (1 to 200,000 characters) and `language` (1 to 50 characters). Extra fields and implicit type conversions are rejected. The response contains `status`, `risk_score`, `vulnerabilities`, and `summary`. A finding contains `severity`, `category`, `description`, `line_reference`, and `remediation`. Pydantic enforces `HIGH`, `MEDIUM`, or `LOW` severity, `PASSED` or `FAILED` status, and a score between 0 and 100.
+## Ollama analysis
 
-## Analysis and decision rules
+`scanner/ai_auditor.py` sends the submitted change to Ollama's `/api/generate` endpoint with `stream: false`, temperature 0, and a JSON schema. Its system prompt treats source text as untrusted data and requests only concrete findings on introduced lines. The Ollama envelope and each finding are Pydantic-validated. Confidence below 0.6 is dropped; same-line/category duplicates keep the higher severity. Invalid output triggers up to three repair prompts inside a five-second total deadline. Exhausted repairs produce `Analysis Incomplete`.
 
-The static analyzer recognizes a Git patch from `diff --git` or hunk headers. It checks only `+` added lines, skips file headers, and derives new file line numbers from hunk headers. For a snippet, it checks every line. Its rules detect certain credential formats, private keys, hardcoded passwords, unsafe `eval`/`exec`, concatenated SQL calls, and connection strings with embedded credentials. It does not parse the source language; `language` is ignored by this pass.
+An Ollama transport error or timeout yields the available static findings and an incomplete-analysis summary. HTTP 503 is returned only if both static and model passes fail. Logs contain the diff hash and counts. They do not include source, model output, or Authorization headers.
 
-The AI auditor sends the full submitted text and language to Ollama's `/api/generate` endpoint with `stream: false`, a JSON schema for findings, and temperature 0. The system prompt instructs the model to treat code as data and report only supported security issues introduced by added patch lines. The returned `response` string is parsed as JSON, including a fenced JSON block if present, and validated against the finding schema.
+## Scoring and deployment
 
-`combine_findings` maps a few equivalent category names (for example, unsafe code execution and code injection) and deduplicates findings with the same normalized category and trailing line number. It keeps the higher severity. This is a heuristic: different descriptions on the same line and category can collapse into one finding, while equivalent issues with different location formats may remain separate.
+A retained HIGH adds 40 points, MEDIUM 15, LOW 5, and a tainted finding adds 10 more. Risk caps at 100. A finding in a test/example path is downgraded one severity step before scoring. Any retained HIGH yields `FAILED`; otherwise the status is `PASSED`. A PASSED result may contain medium/low findings and does not prove the code is secure.
 
-The score is `min(100, 40 × HIGH + 15 × MEDIUM + 5 × LOW)`. The response is `FAILED` when any retained finding is `HIGH`; otherwise it is `PASSED`. Thus `PASSED` can still include medium or low findings and a nonzero score. The score is a prioritization aid, not a calibrated probability.
+The intended local deployment binds to `127.0.0.1`. Local mode has no authentication or TLS. Use an authenticated reverse proxy if exposing it. The in-memory rate limit and metrics are per process; multi-worker deployments need a shared rate-limit backend. `OLLAMA_URL` may cross a network boundary and sends the full source to that endpoint.
 
-## Errors and incomplete analysis
+## GitHub Action boundary
 
-Invalid requests receive FastAPI's validation error response. Ollama transport failures, timeouts, and HTTP errors map to HTTP `503`, so callers can retry after checking the service and model. A successful Ollama HTTP response with invalid or missing findings becomes a `HIGH` severity `Analysis Incomplete` finding. That yields a `FAILED` audit and tells the caller to repeat it; the invalid model text is logged. This prevents a malformed model response from being treated as a clean review.
+The composite Action at the repository root and under `.github/actions/ai-guardian/` runs the trusted `audit_pr.py` script. It reads a Git comparison as data, splits it by file, and calls the configured API or imports the trusted static scanner directly. It never imports code from the checked-out PR. The default API URL is localhost; a remote URL is an explicit source-transfer boundary. A failed API call falls back to static analysis. Unsupported code languages in static-only mode and oversized source files produce HIGH `Analysis Incomplete` findings.
 
-## Deployment and trust boundaries
+The PR comment contains only file, line, severity, an allowlisted category, and fixed remediation guidance. No code or model-authored text is included. Posting requires a write-capable GitHub token; fork PRs commonly have read-only tokens. The example uses `pull_request` rather than privileged `pull_request_target`. The published `@v1` reference requires a pushed release tag, which is separate from this local commit.
 
-The intended deployment is local: a client sends code to FastAPI on `127.0.0.1:8000`; FastAPI sends it to Ollama on `localhost:11434` by default. `OLLAMA_URL` can point elsewhere, in which case submitted code crosses that network boundary. There is no authentication, authorization, rate limiting, or TLS in the app. Exposing the API beyond a trusted host needs those controls at the network or reverse proxy layer. Review log access and retention before auditing private source because malformed Ollama output is logged.
+## Hosted mode
 
-## Testing
+`AIGUARDIAN_MODE=hosted` replaces the local FastAPI route table at startup while retaining the scanner as a library. Docker Compose runs PostgreSQL, Redis, a one-shot schema initializer, the hosted API, and an RQ worker. Local mode remains the default. Hosted requests use GitHub OAuth browser sessions for organization management and a salted SHA-256 `X-API-Key` for audit submission. Raw API keys are returned once. GitHub tokens are encrypted at rest for repository access checks and commit statuses. Every organization route checks membership; PostgreSQL FORCE RLS on repositories, audits, and findings requires a transaction-local organization ID under a non-owner app role.
 
-`tests/test_audit.py` covers strict request validation, static detection and patch filtering, score capping and deduplication, Ollama schema requests and malformed output, and API success and service failure responses. It uses `httpx.MockTransport` and `ASGITransport`, so automated tests do not require Ollama. Manual end-to-end validation requires a running Ollama model and a request through the local API.
+Audit submission locks the organization row before counting the current UTC day's audits, reserves a quota slot, and enqueues a bounded job. Free allows 100 audits/day, pro 1000, and enterprise has no daily limit. The worker executes the existing static, taint, and Ollama passes, persists only metadata/findings, and updates the GitHub commit status for a linked repository and SHA. `failure` status blocks a PR only if branch protection requires the `AI Guardian` context. An exception in the worker marks the audit `ERROR`; a queue outage marks the reserved audit `ERROR` and returns HTTP 503. Source exists temporarily in Redis job arguments and is deleted on job completion or failure; job descriptions and application logs omit it.
+
+Organization audit history is filterable by repository, severity, and 7/30/90-day range. Statistics use SQL aggregates for daily mean risk, finding categories, and vulnerable repository ranking, plus mean hours from finding creation to fixed time. A development-only smoke command creates synthetic credentials, runs the real HTTP/Redis/PostgreSQL path, verifies that RLS hides audits without tenant context, and removes its data. OAuth needs real GitHub credentials for live sign-in; tests mock GitHub interactions.
+
+The Compose file binds the hosted API to loopback port 8001 with development defaults. Production must provide HTTPS, unique secrets, private PostgreSQL/Redis, and a trusted model endpoint. Initial schema creation uses SQLAlchemy; rolling schema upgrades require versioned migrations before deployment.
+
+## Verification and current limits
+
+The web dashboard under `dashboard/web/` uses Next.js 14 App Router, NextAuth GitHub OAuth, Tailwind, Recharts, and local shadcn-style components. The NextAuth sign-in callback exchanges its provider access token with the hosted backend, which verifies it against GitHub and creates a personal workspace. The backend's signed session cookie remains inside the encrypted NextAuth token. A same-origin route handler validates the active organization, HTTP method, path, and mutation origin before forwarding requests. Development-only demo mode returns synthetic data instead of contacting FastAPI. Audit detail polls queued/running status every five seconds, and a protected backend route streams a linked GitHub diff with a 200,000-byte display limit. API key creation displays the raw value once; revocation updates the backend key record. The browser never receives GitHub tokens or backend cookies. Real OAuth needs user-configured GitHub credentials and has not been exercised in the mock test suite.
+The requested Next.js 14 line has unresolved upstream advisories. `npm audit --omit=dev` currently reports one critical and one high production dependency issue in Next.js and its bundled PostCSS. The development command binds only to loopback; a publicly exposed deployment needs a migration to a supported patched Next.js line and a clean dependency audit.
+
+Billing uses configured Stripe Price IDs for Pro and Team Checkout. The owner starts Checkout and portal sessions; the API never accepts an arbitrary client Price ID. A signed Stripe webhook is checked against the raw request body, recorded by event ID, and applies plan/subscription changes only for matching customers and current subscriptions. A payment failure marks the organization `past_due`, blocks API-key audit submissions, and sends an owner notification when SMTP is configured. Members retain dashboard read access during payment recovery. The subscription's licensed quantity is recorded as billed seats, and paid organizations cannot add more members or submit audits beyond that quantity. A separate retention process runs hourly with tenant-scoped deletes.
+
+The initial PostgreSQL initializer also applies idempotent billing column and constraint changes to existing hosted databases; it converts legacy `enterprise` plans to `team`. Billing is per organization. Local development without Stripe keys exposes an owner-authenticated manual plan activation endpoint; it is absent in configured or production mode. Real Stripe test-mode checkout and webhook delivery require user-provided Stripe credentials and are not covered by mock tests. Future plan features are labeled planned in the UI.
+
+## Production cloud deployment and GitHub App
+
+`docker-compose.prod.yml` builds separate Python 3.11 API and worker images plus the Next.js image. PostgreSQL, Redis, the schema initializer, API, worker, and web service have health checks; the API and web ports should be placed behind HTTPS while PostgreSQL and Redis stay private. `.env.prod.example` lists the required database, OAuth, Stripe, Ollama, Sentry, and GitHub App settings. Fly.io, Render, and Railway component deployment notes are in [`DEPLOY.md`](../DEPLOY.md).
+
+The GitHub App webhook at `POST /api/v1/webhooks/github` accepts only signed `pull_request.opened` and `pull_request.synchronize` events. It resolves the linked organization, records the installation ID, obtains a short-lived installation token, downloads a bounded diff, and queues the same worker used by API-key submissions. The worker creates a completed `AI Guardian` check run with `failure` for retained HIGH findings and `success` otherwise. The App must be created in GitHub Developer Settings with contents read, pull requests read/write, and checks write; the setup steps are in [`docs/github-app.md`](github-app.md).
+
+Hosted `/metrics` exposes Prometheus counters for completed audits, an audit latency histogram, and an LLM error-rate gauge. Sentry is opt-in through `SENTRY_DSN`; request bodies and headers are scrubbed before events are sent.
+
+The VS Code extension under `vscode-extension/` activates for Python, JavaScript, and TypeScript. It posts a whole small file or a 200-line visible window to the audit API and maps relative API line references back to editor positions. Diagnostics, status bar state, save scans, optional debounced typing scans, and explicit commands run in the extension host. Requests have a seven-second client deadline; stale results are discarded by document version and superseded request controller. API errors trigger five local heuristic patterns, which are deliberately narrower than backend AST and taint analysis. A file over 200,000 characters is skipped. Precise `eval()` and `innerHTML` findings from either the API or offline pass offer code actions; the latter replaces `innerHTML` with `textContent`, while the former suggests `ast.literal_eval` for literal parsing. A custom remote API URL transfers source out of the machine.
+
+`npm test` in the extension runs 11 offline rule tests after strict TypeScript compilation. VS Code host integration and Marketplace packaging require manual verification in an Extension Development Host.
+
+The extension includes `.vscode/launch.json` and `.vscode/tasks.json` so F5 compiles and launches the extension in a development host. The host can test offline fallback without the backend; model-assisted findings require the API and Ollama processes.
+
+The unit suite uses mock Ollama transport. `tests/test_rules.py` has 20 vulnerable and 20 safe cases; `tests/test_taint.py` has ten flows. `tests/test_audit.py` checks contracts, repair, fallback, deduplication, logging privacy, and the 200,000-character performance path.
+
+`python -m tests.owasp_benchmark` downloads 50 labeled Python files from official OWASP BenchmarkPython v0.1 commit `f1291485808b66e20ddb6b01b10dc71b3df8c8ba`: 25 true and 25 false cases selected with seed 42. It scores static plus taint analysis only. The measured table here was TP=5, FP=1, FN=20, TN=24 (precision 0.833, recall 0.200). The limited sample and low recall show that the scanner is not ready for unattended security approval; many cases need interprocedural or framework-aware analysis. Model-assisted accuracy has not been measured by this benchmark.

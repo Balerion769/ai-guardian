@@ -1,0 +1,9 @@
+# AIGuardian web dashboard design
+
+The App Router dashboard is a browser view over the hosted FastAPI API. NextAuth owns the web session. On GitHub sign-in, its server exchanges the provider access token with `POST /api/v1/auth/github`; FastAPI verifies that token against GitHub, upserts the user and personal organization, and returns its signed session cookie. The encrypted NextAuth JWT retains that backend cookie and active organization ID. A same-origin route handler forwards an allowlisted set of requests to FastAPI; the browser never receives either credential. Development mode without GitHub credentials offers a clearly marked demo session backed by synthetic data.
+
+The application includes overview, repository list/detail, audit detail, and organization settings/API-key views. Recharts renders daily risk, category distribution, and repository sparklines. Severity and category filters operate on visible finding rows. Audit detail polls every five seconds while queued or running. Since the backend does not store source diffs, a new protected endpoint fetches the linked PR or commit diff from GitHub at view time, caps the response, and returns a clear unavailable state when no GitHub reference exists.
+
+The API-key creation response holds the raw key only for the current dialog. Closing the dialog clears it; the key list exposes only prefix and last four characters. Revocation requires organization admin access. The active organization is selected from the authenticated user's memberships and every proxied organization path is checked against it. No browser-accessible variable contains backend or GitHub credentials. The demo never writes to the hosted database.
+
+The design uses Next.js 14, Tailwind CSS, NextAuth v4, Recharts, and local shadcn-style Card, Table, Badge, Button, and Dialog components. It must pass TypeScript, component tests, production build, the existing Python suite, and local HTTP checks on port 3000.

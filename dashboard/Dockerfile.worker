@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+COPY requirements.txt requirements-dashboard.txt ./
+RUN python -m pip install --no-cache-dir -r requirements-dashboard.txt \
+    && useradd --system --uid 10001 --create-home aiguardian
+COPY scanner ./scanner
+COPY dashboard ./dashboard
+USER aiguardian
+
+CMD ["rq", "worker", "audits", "--url", "redis://redis:6379/0"]

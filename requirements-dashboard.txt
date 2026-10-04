@@ -1,0 +1,12 @@
+-r requirements.txt
+sqlalchemy>=2.0,<3
+psycopg[binary]>=3.2,<4
+redis>=5,<7
+rq>=2,<3
+authlib>=1.6,<2
+cryptography>=44,<47
+itsdangerous>=2.2,<3
+stripe>=12,<15
+PyJWT>=2.8,<3
+prometheus-client>=0.20,<1
+sentry-sdk>=2,<3

@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --background: 222 24% 7%;
+  --foreground: 220 20% 94%;
+  --card: 223 21% 10%;
+  --border: 220 15% 20%;
+  --muted: 219 12% 58%;
+  --primary: 154 68% 51%;
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: Inter, system-ui, sans-serif;
+}
+::selection {
+  background: rgba(65, 206, 141, 0.3);
+}
+.mono {
+  font-family: "DM Mono", ui-monospace, monospace;
+}
+.surface {
+  background: linear-gradient(145deg, rgba(29, 35, 44, 0.96), rgba(21, 26, 34, 0.96));
+  border: 1px solid rgba(122, 142, 166, 0.15);
+}
+.grid-glow {
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(28, 165, 114, 0.14), transparent 45%),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size:
+    auto,
+    40px 40px,
+    40px 40px;
+}
+.thin-scroll::-webkit-scrollbar {
+  height: 7px;
+  width: 7px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: #353f4b;
+  border-radius: 10px;
+}
+.text-gradient {
+  background: linear-gradient(105deg, #f1faf6, #7fdaa9);
+  background-clip: text;
+  color: transparent;
+}
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+:focus-visible {
+  outline: 2px solid #40c789;
+  outline-offset: 3px;
+}
