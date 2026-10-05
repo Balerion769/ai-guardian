@@ -1,5 +1,30 @@
 # AIGuardian architecture
 
+## Free hosting profile
+
+`render.yaml` deploys one free Python API in Singapore. `dashboard.api.main:app`
+exposes the hosted app; `dashboard.free_start` applies Alembic then starts one
+Uvicorn worker using `PORT`. Neon supplies durable PostgreSQL; Vercel deploys
+`dashboard/web` with `vercel.json`. Schema-owner migrations and a non-owner
+runtime role preserve forced tenant RLS. Only explicit local development may
+use a SQLite fallback; a configured database is never silently replaced.
+
+With `STATIC_ONLY_MODE=1`, authenticated audit submissions and verified GitHub
+PR webhooks execute the existing worker function within the request after the
+audit row commits. No Redis connection or Ollama request occurs. The worker
+persists static plus taint results with `model_used=static-only`; a static
+engine failure is `ERROR`, never a clean approval. This avoids paid background
+workers and incomplete queued jobs when the free API sleeps. Regular hosting
+keeps the existing RQ flow when the flag is off.
+
+The dashboard retains its same-origin `/api/dashboard` proxy and private
+backend session cookie. Server upstream configuration resolves
+`BACKEND_API_URL`, then `NEXT_PUBLIC_API_URL`, then the local development URL.
+Browser, proxy, and OAuth exchanges cancel stalled fetches after 10 seconds,
+without automatic mutation retries. Cold starts can exceed this timeout.
+`/` and `/health` use no database connection. See [DEPLOY_FREE.md](../DEPLOY_FREE.md)
+for provider quotas, sign-in, migration roles, and complete-flow verification.
+
 ## Request flow
 
 `POST /api/v1/audit` accepts strict `AuditRequest` fields `diff_content` and `language`. Pydantic rejects unknown fields and inputs over 200,000 characters; the route rejects more than 2,000 added lines with HTTP 413. SlowAPI limits the route to 60 requests per minute per client IP.

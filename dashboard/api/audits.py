@@ -185,6 +185,14 @@ def submit_audit(
         session.flush()
         audit_id = audit.id
     settings = get_settings()
+    if settings.static_only_mode:
+        # Run within the request: no paid worker or restart-sensitive background task.
+        from dashboard.worker.audit_worker import process_audit
+        try:
+            process_audit(str(audit_id), str(org_id), payload.diff_content, payload.language)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Static audit processing failed; retry submission") from exc
+        return _read_audit(org_id, audit_id)
     try:
         connection = Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
         queue = Queue("audits", connection=connection)

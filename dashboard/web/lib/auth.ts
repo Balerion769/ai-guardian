@@ -2,6 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GitHubProvider from "next-auth/providers/github";
 import { demoEnabled } from "@/lib/proxy";
+import { backendUrl, fetchWithTimeout } from "@/lib/http";
 
 const githubId = process.env.GITHUB_ID ?? process.env.GITHUB_CLIENT_ID;
 const githubSecret = process.env.GITHUB_SECRET ?? process.env.GITHUB_CLIENT_SECRET;
@@ -45,8 +46,8 @@ const providers: NextAuthOptions["providers"] = hasGithub
 async function exchangeGithubToken(
   accessToken: string,
 ): Promise<{ cookie: string; orgId: string }> {
-  const response = await fetch(
-    `${process.env.BACKEND_API_URL ?? "http://127.0.0.1:8001"}/api/v1/auth/github`,
+  const response = await fetchWithTimeout(
+    `${backendUrl()}/api/v1/auth/github`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -92,8 +93,8 @@ export const authOptions: NextAuthOptions = {
         session.orgId !== token.orgId
       ) {
         try {
-          const response = await fetch(
-            `${process.env.BACKEND_API_URL ?? "http://127.0.0.1:8001"}/api/v1/orgs/${encodeURIComponent(session.orgId)}`,
+          const response = await fetchWithTimeout(
+            `${backendUrl()}/api/v1/orgs/${encodeURIComponent(session.orgId)}`,
             {
               headers: { Cookie: token.backendCookie },
               cache: "no-store",

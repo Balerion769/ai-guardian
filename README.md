@@ -25,6 +25,11 @@ The scanner inspects added lines in a Git patch, or every line of a plain snippe
 
 ## Hosted Version
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Balerion769/ai-guardian)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Balerion769/ai-guardian)
+
+For a personal demo without GPU costs, follow [DEPLOY_FREE.md](DEPLOY_FREE.md): one free Render API, Neon Postgres, and Vercel Hobby. `STATIC_ONLY_MODE=1` executes static and taint analysis inline with persisted results and authenticated org access. Redis is optional for this profile. Select branch `ast-security-rules` and Vercel root directory `dashboard/web`. Public demo URLs will be added after a verified deployment.
+
 The hosted dashboard in [`dashboard/web`](dashboard/web/README.md) provides GitHub OAuth, organization-scoped API keys, PostgreSQL audit history, Redis workers, Stripe plans, GitHub App pull-request checks, and Prometheus/Sentry observability. Deploy it with [`docker-compose.prod.yml`](docker-compose.prod.yml) using the [deployment guide](DEPLOY.md). The dashboard is designed to run behind your own HTTPS domain; this repository does not claim a hosted public URL.
 
 ```mermaid
@@ -200,6 +205,8 @@ Run `docker compose up --build -d` to start PostgreSQL, Redis, a schema initiali
 To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable and 25 safe), run `$env:BENCHMARK_MODE='1'; python -m tests.owasp_benchmark` (PowerShell) or `BENCHMARK_MODE=1 python -m tests.owasp_benchmark` (macOS/Linux). Benchmark mode disables the production candidate sampling cap, uses static and taint analysis only, and prints a precision/recall table. It requires network access. On the sampled seed-42 set in this environment, static precision was `0.938` and recall was `0.600` (15 TP, 1 FP, 10 FN, 24 TN); this is a limited sample, not a production accuracy claim.
 
 ## Current limits and safe use
+
+- Free hosting disables semantic review and executes audits inline. Render cold starts can exceed the dashboard's 10-second request timeout; wake `/health` and retry. Free tiers are suitable for a personal demo, have provider quotas, and do not provide production availability. Cloud mode never falls back to ephemeral SQLite; only explicit local development can do so.
 
 - The Next.js dashboard in `dashboard/web/` runs on port 3000 and offers synthetic demo data only in development when GitHub OAuth is not configured. Real sign-in needs a GitHub OAuth app, a `NEXTAUTH_SECRET`, and the hosted API. The web client uses a server-side session proxy, so API keys are only displayed once and are never placed in browser storage. The dashboard can show diffs only when an audit links to a GitHub PR or commit; the backend fetches these on demand and limits display to 200,000 bytes. See [dashboard setup](dashboard/web/README.md).
 - The dashboard is pinned to Next.js 15.5.27 with a PostCSS 8.5.28 override; `npm audit --omit=dev` is clean in the checked lockfile. The local demo binds to `127.0.0.1`; use HTTPS and provider-managed secrets before exposing it publicly.

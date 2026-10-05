@@ -3,6 +3,7 @@ import { type NextRequest } from "next/server";
 import { demoResponse } from "@/lib/demo";
 import { isAllowedMutationOrigin, isAllowedProxyPath } from "@/lib/proxy";
 import { authConfigured } from "@/lib/auth";
+import { backendUrl, fetchWithTimeout } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +45,11 @@ async function forward(
     return Response.json({ detail: "Backend session unavailable" }, { status: 401 });
 
   const url = new URL(
-    `${process.env.BACKEND_API_URL ?? "http://127.0.0.1:8001"}/api/v1/${path.map(encodeURIComponent).join("/")}`,
+    `${backendUrl()}/api/v1/${path.map(encodeURIComponent).join("/")}`,
   );
   url.search = query.toString();
   try {
-    const upstream = await fetch(url, {
+    const upstream = await fetchWithTimeout(url, {
       method: request.method,
       headers: {
         Cookie: token.backendCookie,
@@ -58,7 +59,6 @@ async function forward(
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
       redirect: "manual",
-      signal: AbortSignal.timeout(12_000),
     });
     const contentType = upstream.headers.get("content-type") ?? "application/json";
     return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {

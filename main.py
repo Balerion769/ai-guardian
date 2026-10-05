@@ -58,7 +58,7 @@ def _with_unified_remediations(diff_content: str, language: str, findings: list[
 @app.get("/health")
 async def health() -> dict[str, str]:
     """Expose process readiness and the configured model name."""
-    return {"status": "ok", "model": get_ai_auditor().model}
+    return {"status": "ok", "model": "static-only" if os.getenv("STATIC_ONLY_MODE") == "1" else get_ai_auditor().model}
 
 
 @app.get("/metrics")
@@ -86,13 +86,18 @@ async def audit(request: Request, payload: AuditRequest, ai_auditor: AIAuditor =
         logger.warning("static_audit_failed diff_sha256=%s count=0", digest)
     logger.warning("static_audit diff_sha256=%s count=%d", digest, len(static_findings))
     ai_failed = False
-    try:
-        ai_findings = await ai_auditor.analyze(payload.diff_content, payload.language)
-    except Exception:
-        ai_failed = True
+    static_only = os.getenv("STATIC_ONLY_MODE", "0") == "1"
+    if static_only:
         ai_findings = []
-        logger.warning("ollama_unavailable diff_sha256=%s count=0", digest)
-    if static_failed and ai_failed:
+        logger.info("Running static-only free tier diff_sha256=%s count=%d", digest, len(static_findings))
+    else:
+        try:
+            ai_findings = await ai_auditor.analyze(payload.diff_content, payload.language)
+        except Exception:
+            ai_failed = True
+            ai_findings = []
+            logger.warning("ollama_unavailable diff_sha256=%s count=0", digest)
+    if static_failed and (ai_failed or static_only):
         raise HTTPException(status_code=503, detail="Both static analysis and Ollama are unavailable; retry the audit.")
     combined = _downgrade_examples(combine_findings(static_findings, ai_findings))
     combined = _with_unified_remediations(payload.diff_content, payload.language, combined)
@@ -107,6 +112,8 @@ async def audit(request: Request, payload: AuditRequest, ai_auditor: AIAuditor =
         summary += " Semantic analysis was incomplete; repeat the audit before accepting the change."
     elif not combined:
         summary = "No security vulnerabilities detected in the supplied change."
+    if static_only:
+        summary += " Static and taint analysis only; semantic review is disabled."
 
     result = AuditResponse(
         status="FAILED" if failed else "PASSED",
@@ -116,7 +123,7 @@ async def audit(request: Request, payload: AuditRequest, ai_auditor: AIAuditor =
         static_count=len(static_findings),
         ai_count=len(ai_findings),
         latency_ms=round((time.perf_counter() - started) * 1000, 2),
-        model_used=ai_auditor.model,
+        model_used="static-only" if static_only else ai_auditor.model,
     )
     with _metric_lock:
         _metrics["audits"] += 1

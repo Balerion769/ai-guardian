@@ -1,0 +1,2 @@
+# Compatibility entry point for Python hosting providers.
+-r ../requirements-dashboard.txt

@@ -40,11 +40,19 @@ class Settings:
     github_app_install_url: str
     sentry_dsn: str
     sentry_environment: str
+    static_only_mode: bool = False
 
     @property
     def secure_cookie(self) -> bool:
         """Require HTTPS session cookies outside explicit local development."""
         return not self.dev_mode
+
+
+def database_url() -> str:
+    """Use configured storage; permit ephemeral SQLite only in explicit local dev."""
+    return os.getenv("DATABASE_URL", "") or (
+        "sqlite+pysqlite:///./dashboard-local.db" if os.getenv("DASHBOARD_DEV_MODE", "0") == "1" else ""
+    )
 
 
 def get_settings() -> Settings:
@@ -55,7 +63,7 @@ def get_settings() -> Settings:
     if dev_mode and not encryption_key and session_secret:
         encryption_key = base64.urlsafe_b64encode(hashlib.sha256(session_secret.encode()).digest()).decode()
     settings = Settings(
-        database_url=os.getenv("DATABASE_URL", ""),
+        database_url=database_url(),
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
         github_client_id=os.getenv("GITHUB_CLIENT_ID", ""),
         github_client_secret=os.getenv("GITHUB_CLIENT_SECRET", ""),
@@ -83,6 +91,7 @@ def get_settings() -> Settings:
         github_app_install_url=os.getenv("GITHUB_APP_INSTALL_URL", ""),
         sentry_dsn=os.getenv("SENTRY_DSN", ""),
         sentry_environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+        static_only_mode=os.getenv("STATIC_ONLY_MODE", "0") == "1",
     )
     if not settings.database_url:
         raise ValueError("DATABASE_URL is required for hosted mode")

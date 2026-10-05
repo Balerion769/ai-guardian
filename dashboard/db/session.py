@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from uuid import UUID
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
+from dashboard.config import database_url
 
 
 _engine = None
@@ -17,7 +17,7 @@ def get_engine():
     """Create the application engine on first use, after deployment env is loaded."""
     global _engine
     if _engine is None:
-        url = os.getenv("DATABASE_URL")
+        url = database_url()
         if not url:
             raise RuntimeError("DATABASE_URL is required")
         if url.startswith(("postgres://", "postgresql://")):

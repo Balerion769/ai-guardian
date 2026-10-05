@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8000 STATIC_ONLY_MODE=1 AIGUARDIAN_MODE=hosted
+COPY requirements.txt requirements-dashboard.txt ./
+COPY dashboard/requirements.txt ./dashboard/requirements.txt
+RUN pip install --no-cache-dir -r dashboard/requirements.txt \
+    && useradd --system --uid 10001 --create-home aiguardian
+COPY main.py alembic.ini ./
+COPY scanner ./scanner
+COPY dashboard ./dashboard
+USER aiguardian
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '8000') + '/health', timeout=3)"
+CMD ["python", "-m", "dashboard.free_start"]

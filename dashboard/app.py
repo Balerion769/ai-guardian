@@ -46,7 +46,12 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         """Report process readiness without exposing configuration or credentials."""
-        return {"status": "ok", "model": settings.ollama_model}
+        return {"status": "ok", "model": "static-only" if settings.static_only_mode else settings.ollama_model}
+
+    @app.get("/")
+    def landing() -> dict[str, str]:
+        """Expose public documentation without querying storage."""
+        return {"message": "AI Guardian API live", "docs": "/docs"}
 
     @app.get("/metrics", include_in_schema=False)
     def metrics() -> FastAPIResponse:

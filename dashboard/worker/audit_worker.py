@@ -159,22 +159,29 @@ def _process_audit(audit_id: str, org_id: str, diff_content: str, language: str)
 
     ai_failed = False
     model_used = "unavailable"
-    try:
-        settings = get_settings()
-        model_used = settings.ollama_model
-        auditor = AIAuditor(base_url=settings.ollama_url, model=model_used)
-        ai_findings = asyncio.run(auditor.analyze(diff_content, language))
-    except Exception:
-        ai_failed = True
+    settings = get_settings()
+    static_only = getattr(settings, "static_only_mode", False)
+    if static_only:
+        model_used = "static-only"
         ai_findings = []
-        logger.warning("semantic_audit_failed audit_id=%s org_id=%s", audit_id, org_id)
-    record_llm_result(ai_failed)
+        logger.info("Running static-only free tier audit_id=%s org_id=%s", audit_id, org_id)
+    else:
+        try:
+            model_used = settings.ollama_model
+            auditor = AIAuditor(base_url=settings.ollama_url, model=model_used)
+            ai_findings = asyncio.run(auditor.analyze(diff_content, language))
+        except Exception:
+            ai_failed = True
+            ai_findings = []
+            logger.warning("semantic_audit_failed audit_id=%s org_id=%s", audit_id, org_id)
+        record_llm_result(ai_failed)
 
     findings = _downgrade_examples(combine_findings(static_findings, ai_findings))
     risk_score = calculate_risk_score(findings)
-    if static_failed and ai_failed:
+    if static_failed and (ai_failed or static_only):
         status = "ERROR"
-        summary = "Both static analysis and semantic review were unavailable; retry the audit."
+        summary = ("Static analysis was unavailable in static-only mode; retry the audit." if static_only
+                   else "Both static analysis and semantic review were unavailable; retry the audit.")
     else:
         status = "FAILED" if any(item.severity == "HIGH" for item in findings) else "PASSED"
         summary = f"Found {len(findings)} security finding(s)."
@@ -186,6 +193,8 @@ def _process_audit(audit_id: str, org_id: str, diff_content: str, language: str)
             summary += " Semantic analysis was incomplete; repeat the audit before accepting the change."
         elif not findings:
             summary = "No security vulnerabilities detected in the supplied change."
+        if static_only:
+            summary += " Static and taint analysis only; semantic review is disabled."
 
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
     with SessionLocal.begin() as session:

@@ -1,0 +1,36 @@
+# Free API + external Neon PostgreSQL. Free Render workers are unavailable.
+# Static-only audits execute inline, so Upstash Redis is optional in this profile.
+services:
+  - type: web
+    name: ai-guardian-api
+    runtime: python
+    region: singapore
+    plan: free
+    branch: ast-security-rules
+    buildCommand: pip install -r dashboard/requirements.txt
+    startCommand: python -m dashboard.free_start
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.17"
+      - key: AIGUARDIAN_MODE
+        value: hosted
+      - key: STATIC_ONLY_MODE
+        value: "1"
+      - key: DASHBOARD_DEV_MODE
+        value: "0"
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        sync: false
+      - key: DASHBOARD_SESSION_SECRET
+        generateValue: true
+      - key: DASHBOARD_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: DASHBOARD_PUBLIC_BASE_URL
+        sync: false
+      - key: DASHBOARD_WEB_BASE_URL
+        sync: false
+# Do not add a free Render Postgres here: its database expires after 30 days.
+# For a paid RQ worker later, supply REDIS_URL using Upstash's rediss:// TCP URL,
+# not its HTTPS REST endpoint, and set STATIC_ONLY_MODE=0 with private Ollama.

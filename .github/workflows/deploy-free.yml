@@ -1,0 +1,27 @@
+name: Deploy Free
+on:
+  push:
+    branches: [ast-security-rules, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-free-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+    steps:
+      - name: Trigger Render Deploy Hook
+        if: env.RENDER_DEPLOY_HOOK != ''
+        shell: bash
+        run: |
+          if [[ "$RENDER_DEPLOY_HOOK" != https://api.render.com/deploy/* ]]; then
+            echo "::error::Invalid Render deploy hook destination"
+            exit 1
+          fi
+          curl --fail --silent --show-error --output /dev/null --request POST "$RENDER_DEPLOY_HOOK"
+# Vercel deploys through its Git integration; configure the production branch
+# as ast-security-rules and root directory as dashboard/web in project settings.

@@ -133,6 +133,15 @@ def github_webhook(request: Request, body: bytes = Body(...), db: Session = Depe
     )
     db.add(audit)
     db.flush()
+    if settings.static_only_mode:
+        from dashboard.worker.audit_worker import process_audit
+        audit_id, org_id = str(audit.id), str(organization.id)
+        db.commit()  # The worker uses separate transactions and must see the row.
+        try:
+            process_audit(audit_id, org_id, diff, _language_from_diff(diff))
+        except Exception as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Static audit processing failed") from exc
+        return {"status": "processed", "audit_id": audit_id}
     try:
         queue = Queue("audits", connection=Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2))
         queue.enqueue(

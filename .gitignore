@@ -6,6 +6,9 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!.env.free.example
+dashboard-local.db
+dashboard-local.db-*
 .pytest_cache/
 .idea/
 .vscode/

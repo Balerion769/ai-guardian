@@ -10,6 +10,7 @@ import type {
   BillingSummary,
   Invoice,
 } from "@/lib/types";
+import { fetchWithTimeout } from "@/lib/http";
 
 export class ApiError extends Error {
   constructor(
@@ -21,12 +22,17 @@ export class ApiError extends Error {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/dashboard/${path}`, {
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`/api/dashboard/${path}`, {
     ...init,
     credentials: "same-origin",
     cache: "no-store",
     headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+    });
+  } catch {
+    throw new ApiError(504, "API unavailable or timed out. A sleeping free service can take about a minute to start; retry after it wakes.");
+  }
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {
@@ -94,7 +100,7 @@ export const activateDemoPlan = (
   });
 
 export async function getAuditDiff(auditId: string, orgId: string): Promise<string | null> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `/api/dashboard/orgs/${encodeURIComponent(orgId)}/audits/${encodeURIComponent(auditId)}/diff`,
     { cache: "no-store" },
   );
