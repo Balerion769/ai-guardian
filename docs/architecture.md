@@ -2,6 +2,15 @@
 
 ## Free hosting profile
 
+The verified public deployment uses `ai-guardian-theta.vercel.app` for the web
+dashboard and `ai-guardian-api-vwj7.onrender.com` for FastAPI. Both track
+`ast-security-rules`. On October 5, 2026, GitHub OAuth completed, the API
+created a personal workspace in Neon, and dashboard statistics loaded through
+the authenticated server proxy. The runtime database role is
+`guardian_runtime`, with `rolsuper=false` and `rolbypassrls=false`; migrations
+use the separate schema owner. The API is in Singapore and the existing Neon
+project is in Ohio, so this deployment incurs cross-region database latency.
+
 `render.yaml` deploys one free Python API in Singapore. `dashboard.api.main:app`
 exposes the hosted app; `dashboard.free_start` applies Alembic then starts one
 Uvicorn worker using `PORT`. Neon supplies durable PostgreSQL; Vercel deploys

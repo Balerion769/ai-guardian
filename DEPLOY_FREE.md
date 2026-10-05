@@ -7,6 +7,28 @@ Ollama, Together API key, paid worker, or Redis subscription is required.
 then persists results. Authentication, org membership, quotas, and tenant
 policies remain enforced.
 
+## Live deployment
+
+Verified on October 5, 2026:
+
+- Website: [ai-guardian-theta.vercel.app](https://ai-guardian-theta.vercel.app).
+- API: [ai-guardian-api-vwj7.onrender.com](https://ai-guardian-api-vwj7.onrender.com).
+- Health: [HTTP 200, static-only](https://ai-guardian-api-vwj7.onrender.com/health).
+- GitHub sign-in creates a personal workspace and loads live dashboard statistics.
+- Render and Vercel production track `ast-security-rules`; Vercel root is `dashboard/web`.
+- The existing Neon project is in Ohio; the API is in Singapore. New deployments
+  should colocate them to reduce database latency. No paid worker, Redis, or LLM
+  service is used in this deployment.
+- Actual production values are `NEXTAUTH_URL=https://ai-guardian-theta.vercel.app`
+  and `BACKEND_API_URL=https://ai-guardian-api-vwj7.onrender.com`.
+- Runtime uses the restricted `guardian_runtime` role; migrations use the schema
+  owner. Check the complete host ends in `.neon.tech`, includes `/neondb`, and
+  retains `sslmode=require`. A truncated connection URL prevents startup.
+
+The generic provider URLs in the instructions below are examples. Substitute
+your assigned domains, database name, and role names. Never copy production
+credentials into this document or Git.
+
 ## Free-plan boundaries
 
 Verified against provider documentation on October 5, 2026:
@@ -26,8 +48,8 @@ Verified against provider documentation on October 5, 2026:
 
 Select only free plans; do not enable usage-based upgrades or add payment
 methods for this demo. Providers can require account verification and change
-quotas. The repository cannot bypass those requirements. URLs below are
-placeholders until providers assign your actual deployments.
+quotas. The repository cannot bypass those requirements. URLs in the setup
+examples below are placeholders until providers assign your deployments.
 
 ## 1. Neon Postgres in Singapore
 
