@@ -22,7 +22,7 @@ To package for local installation, run `npx @vscode/vsce package` in `vscode-ext
 | `aiGuardian.runOnSave` | `true` | Audit after saving. |
 | `aiGuardian.runOnType` | `false` | Audit after a 750 ms typing pause. |
 
-Files over 200,000 characters are skipped. Files of 500 lines or more send only a 200-line window; findings elsewhere in those files are not shown until that area is viewed and audited. The offline checks are a fallback, not an equivalent replacement for the backend. Two API or offline patterns offer quick fixes. The `ast.literal_eval` quick fix is appropriate only when the expression is intended to parse a Python literal. Rotating leaked credentials and reviewing other remediation steps remain manual.
+Files over 200,000 characters are skipped. Files of 500 lines or more send only a 200-line window; findings elsewhere in those files are not shown until that area is viewed and audited. Five patterns offer quick fixes: Python literal parsing instead of `eval`, disabling standalone `exec`, loading passwords from environment, loading AWS keys from environment, and `textContent` instead of `innerHTML`. The literal parser only supports Python literals. Disabling `exec` stops that code path until explicit dispatch is implemented. Environment edits in JavaScript/TypeScript require Node.js; browser applications should keep secrets in a backend. Rotate leaked credentials and review each edit before applying it.
 
 ## Demo GIF for the Marketplace
 
@@ -30,4 +30,4 @@ Record a short GIF in the Extension Development Host: open a sample Python file 
 
 ## Verify
 
-Run `npm test`. It compiles the extension and checks vulnerable and safe examples for all five offline rules. The API integration needs the Python server and a VS Code Extension Development Host.
+Run `npm test`. It compiles the extension, checks vulnerable and safe examples for all five offline rules, and verifies the five CodeAction edits plus a trailing-code guard. The API integration needs the Python server and a VS Code Extension Development Host.

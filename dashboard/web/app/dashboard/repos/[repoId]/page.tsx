@@ -15,19 +15,30 @@ import { StatusBadge } from "@/components/status-badge";
 import { LoadingState, ErrorState } from "@/components/load-state";
 import { formatDate, formatRelative } from "@/lib/utils";
 
-export default function RepositoryPage({ params }: { params: { repoId: string } }) {
+export default function RepositoryPage({ params }: { params: Promise<{ repoId: string }> }) {
   const { data: session } = useSession();
+  const [route, setRoute] = useState<{ repoId: string } | null>(null);
   const [state, setState] = useState<{ repo: Repository; audits: Audit[] } | null>(null);
   const [error, setError] = useState("");
+  const repoId = route?.repoId;
   useEffect(() => {
-    if (!session?.orgId) return;
+    let active = true;
+    void params.then((resolved) => {
+      if (active) setRoute(resolved);
+    });
+    return () => {
+      active = false;
+    };
+  }, [params]);
+  useEffect(() => {
+    if (!session?.orgId || !repoId) return;
     let active = true;
     Promise.all([
       getRepos(session.orgId),
-      getAudits(session.orgId, { repoId: params.repoId, timeRange: "90d" }),
+      getAudits(session.orgId, { repoId, timeRange: "90d" }),
     ])
       .then(([repos, audits]) => {
-        const repo = repos.find((entry) => entry.id === params.repoId);
+        const repo = repos.find((entry) => entry.id === repoId);
         if (active)
           repo
             ? setState({ repo, audits: audits.items })
@@ -39,7 +50,7 @@ export default function RepositoryPage({ params }: { params: { repoId: string } 
     return () => {
       active = false;
     };
-  }, [session?.orgId, params.repoId]);
+  }, [session?.orgId, repoId]);
   const report = useMemo(() => {
     if (!state) return null;
     const groups = new Map<string, number[]>();

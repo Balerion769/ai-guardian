@@ -278,6 +278,19 @@ class RulePairTests(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertLess(elapsed, 0.2, f"static scan took {elapsed:.3f}s")
 
+    def test_weak_crypto_variants_vulnerable(self) -> None:
+        """Inspect algorithm-name constructors and predictable PRNG APIs."""
+        for source in ("hashlib.new('md5')", "hashlib.new('sha1')", "random.getrandbits(32)",
+                       "random.randbytes(32)", "random.normalvariate(0, 1)", "random.randint(0, 100)"):
+            with self.subTest(source=source):
+                self.assert_detects(source, "Weak or predictable")
+
+    def test_weak_crypto_variants_safe(self) -> None:
+        """Accept strong hashes and operating-system-backed secret generation."""
+        for source in ("hashlib.new('sha512')", "random.SystemRandom().getrandbits(32)", "secrets.token_bytes(32)"):
+            with self.subTest(source=source):
+                self.assert_safe(source)
+
     def test_dense_200k_input_is_bounded_and_fails_closed(self) -> None:
         """An adversarial volume of candidates stays fast and signals truncation."""
         source = "eval(x)\n" * 25_000
@@ -470,6 +483,9 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.json()["status"], "FAILED")
         self.assertEqual(response.json()["risk_score"], 40)
         self.assertEqual(response.json()["vulnerabilities"][0]["category"], "Unsafe Code Execution")
+        remediation = response.json()["vulnerabilities"][0]["remediation"]
+        self.assertTrue(remediation.startswith("--- a/input\n+++ b/input\n@@ -1,1 +1,1 @@"))
+        self.assertIn("-eval(user_input)", remediation)
 
     def test_static_logging_uses_hash_and_count_only(self) -> None:
         """A high static finding never writes the submitted secret to logs."""

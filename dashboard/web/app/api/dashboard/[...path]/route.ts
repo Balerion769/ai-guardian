@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 async function forward(
   request: NextRequest,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
   if (!authConfigured())
     return Response.json({ detail: "Authentication is not configured" }, { status: 503 });
@@ -17,7 +17,7 @@ async function forward(
     secret: process.env.NEXTAUTH_SECRET ?? "local-demo-secret-for-development-only-change-me",
   });
   if (!token?.orgId) return Response.json({ detail: "Sign in required" }, { status: 401 });
-  const path = params.path;
+  const path = (await params).path;
   if (!isAllowedProxyPath(path, token.orgId, request.method))
     return Response.json({ detail: "Resource unavailable" }, { status: 404 });
   if (

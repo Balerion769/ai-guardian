@@ -20,6 +20,7 @@ from scanner.pipeline import _downgrade_examples, calculate_risk_score, combine_
 from scanner.static_rules import StaticAnalyzer
 from scanner.static_rules import get_added_lines
 from scanner.taint import analyze_taint
+from scanner.remediation import unified_remediation
 
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,13 @@ async def safe_request_logging(request: Request, call_next: Callable[[Request], 
 def get_ai_auditor() -> AIAuditor:
     """Construct an auditor so callers can replace it for local testing."""
     return AIAuditor()
+
+
+def _with_unified_remediations(diff_content: str, language: str, findings: list[Vulnerability]) -> list[Vulnerability]:
+    """Return validated findings whose remediation is a unified diff."""
+    return [Vulnerability(**finding.model_dump(
+        exclude={"remediation"},
+    ), remediation=unified_remediation(diff_content, language, finding)) for finding in findings]
 
 
 @app.get("/health")
@@ -87,6 +95,7 @@ async def audit(request: Request, payload: AuditRequest, ai_auditor: AIAuditor =
     if static_failed and ai_failed:
         raise HTTPException(status_code=503, detail="Both static analysis and Ollama are unavailable; retry the audit.")
     combined = _downgrade_examples(combine_findings(static_findings, ai_findings))
+    combined = _with_unified_remediations(payload.diff_content, payload.language, combined)
     failed = any(item.severity == "HIGH" for item in combined)
     incomplete = any(item.category == "Analysis Incomplete" for item in combined)
     summary = f"Found {len(combined)} security finding(s)."

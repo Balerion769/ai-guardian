@@ -7,7 +7,7 @@ export interface FallbackFinding {
   readonly category: string;
   readonly description: string;
   readonly remediation: string;
-  readonly fix?: 'python-literal-eval' | 'dom-text-content';
+  readonly fix?: 'python-literal-eval' | 'dom-text-content' | 'python-safe-exec' | 'extract-secret' | 'extract-aws-key';
 }
 
 interface Rule {
@@ -30,18 +30,21 @@ const RULES: readonly Rule[] = [
   {
     languages: ['python'], expression: /\bexec\s*\(/g,
     category: 'Dynamic Execution', description: 'exec() can execute attacker-controlled Python statements.',
-    remediation: 'Replace exec() with an explicit operation dispatch table.'
+    remediation: 'Replace exec() with an explicit operation dispatch table.',
+    fix: 'python-safe-exec'
   },
   {
     languages: ['python', 'javascript', 'typescript'],
     expression: /\bpassword\s*(?::\s*string\s*)?=\s*(['"])(?!\1)(?:\\.|(?!\1).){4,}\1/gi,
     category: 'Hardcoded Secret', description: 'A password appears to be embedded in source code.',
-    remediation: 'Read the password from a local secret store or environment variable and rotate the exposed value.'
+    remediation: 'Read the password from a local secret store or environment variable and rotate the exposed value.',
+    fix: 'extract-secret'
   },
   {
     languages: ['python', 'javascript', 'typescript'], expression: /\bAKIA[0-9A-Z]{16}\b/g,
     category: 'Hardcoded Secret', description: 'A value has the shape of an AWS access key ID.',
-    remediation: 'Remove the key, rotate it in AWS, and load credentials from a secret provider.'
+    remediation: 'Remove the key, rotate it in AWS, and load credentials from a secret provider.',
+    fix: 'extract-aws-key'
   },
   {
     languages: ['javascript', 'typescript'], expression: /\.innerHTML\s*=/g,

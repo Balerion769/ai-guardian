@@ -20,6 +20,8 @@ def get_engine():
         url = os.getenv("DATABASE_URL")
         if not url:
             raise RuntimeError("DATABASE_URL is required")
+        if url.startswith(("postgres://", "postgresql://")):
+            url = "postgresql+psycopg://" + url.split("://", 1)[1]
         _engine = create_engine(url, pool_pre_ping=True, hide_parameters=True)
     return _engine
 

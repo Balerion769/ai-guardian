@@ -1,6 +1,7 @@
 """Positive and false-positive cases for the twenty static rule families."""
 
 import unittest
+from unittest.mock import patch
 
 from scanner.static_rules import StaticAnalyzer, get_added_lines
 
@@ -73,3 +74,11 @@ class DiffTests(unittest.TestCase):
         scanner = StaticAnalyzer()
         self.assertTrue(any(item.category == "Hardcoded API Key" for item in scanner.analyze("API_KEY=abcdefgh123456", "env")))
         self.assertEqual(scanner.analyze("API_KEY=${API_KEY_FROM_SECRET_STORE}", "env"), [])
+
+    def test_benchmark_mode_does_not_sample_candidates(self) -> None:
+        """Benchmark mode scans every suspicious line instead of capping at 128."""
+        source = "\n".join(f"eval(value_{index})" for index in range(140))
+        with patch.dict("os.environ", {"BENCHMARK_MODE": "1"}):
+            findings = StaticAnalyzer().analyze(source, "python")
+        self.assertEqual(sum(item.category == "Unsafe Code Execution" for item in findings), 140)
+        self.assertFalse(any(item.category == "Analysis Incomplete" for item in findings))

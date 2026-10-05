@@ -27,12 +27,18 @@ def _name(node: ast.AST) -> str:
 
 
 def _source(node: ast.AST) -> str | None:
-    """Identify direct request, environment, CLI, and interactive input."""
+    """Identify direct framework request, environment, CLI, and input sources."""
     for child in ast.walk(node):
         name = _name(child)
-        if name in {"input", "sys.argv", "os.environ.get"}:
+        if name in {"input", "sys.argv", "os.environ", "os.environ.get", "flask.request", "request"}:
             return name
-        if name.startswith(("request.args", "request.form", "request.json", "request.values", "flask.request.")):
+        if name.startswith((
+            "request.args", "request.form", "request.json", "request.values",
+            "request.query_params", "request.path_params", "request.headers",
+            "request.body", "request.data", "request.GET", "request.POST",
+            "request.COOKIES", "flask.request.", "django.http.request.",
+            "os.environ.",
+        )):
             return name.split("(", 1)[0]
     return None
 
@@ -46,7 +52,11 @@ def analyze_taint(diff_content: str, language: str) -> list[Vulnerability]:
     if language.strip().lower() not in {"python", "py"}:
         return []
     lines = _source_lines(diff_content)
-    if not lines or not any(token in diff_content for token in ("request", "input(", "sys.argv", "os.environ.get")):
+    source_markers = (
+        "request", "input(", "sys.argv", "os.environ", "flask.request",
+        "django.http", "Request",
+    )
+    if not lines or not any(token in diff_content for token in source_markers):
         return []
     source = textwrap.dedent("\n".join(line.text for line in lines))
     try:
@@ -55,6 +65,17 @@ def analyze_taint(diff_content: str, language: str) -> list[Vulnerability]:
         return []
     tainted: dict[str, str] = {}
     findings: list[Vulnerability] = []
+
+    # FastAPI and Django commonly pass request objects into handler functions.
+    # Treat an explicitly annotated Request parameter as a source and track
+    # its framework-specific attributes through the same local flow pass.
+    for function in ast.walk(tree):
+        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs):
+            annotation = _name(argument.annotation) if argument.annotation else ""
+            if annotation.rsplit(".", 1)[-1] in {"Request", "HttpRequest"}:
+                tainted[argument.arg] = annotation
 
     def origin(node: ast.AST) -> str | None:
         direct = _source(node)
@@ -76,6 +97,10 @@ def analyze_taint(diff_content: str, language: str) -> list[Vulnerability]:
                         tainted[target.id] = value_origin
                     else:
                         tainted.pop(target.id, None)
+        if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            value_origin = origin(node.value)
+            if value_origin:
+                tainted[node.target.id] = value_origin
         if not isinstance(node, ast.Call):
             continue
         sink = _name(node.func)

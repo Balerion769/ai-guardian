@@ -37,6 +37,30 @@ class TaintTests(unittest.TestCase):
         """Track form data into an outbound request."""
         self.assert_tainted("url = request.form['url']\nrequests.get(url)", "requests.get")
 
+    def test_flask_request_attribute_to_sink(self) -> None:
+        """Track a Flask request attribute through an alias."""
+        self.assert_tainted("value = flask.request.args.get('value')\neval(value)", "eval")
+
+    def test_django_request_to_file(self) -> None:
+        """Track Django GET data into a file sink."""
+        self.assert_tainted("name = request.GET.get('name')\nopen(name)", "open")
+
+    def test_fastapi_request_annotation_to_sink(self) -> None:
+        """Track a FastAPI Request parameter through query parameters."""
+        self.assert_tainted("async def handler(request: Request):\n    value = request.query_params.get('value')\n    exec(value)", "exec")
+
+    def test_environment_subscript_to_sink(self) -> None:
+        """Track direct os.environ access into a network sink."""
+        self.assert_tainted("url = os.environ['CALLBACK_URL']\nrequests.post(url)", "requests.post")
+
+    def test_django_annotated_alias_to_sink(self) -> None:
+        """Track a Django HttpRequest parameter with an arbitrary local name."""
+        self.assert_tainted("def handler(req: django.http.HttpRequest):\n    path = req.GET['path']\n    open(path)", "open")
+
+    def test_framework_request_does_not_taint_literal_sink(self) -> None:
+        """A request parameter does not taint a sink with a constant argument."""
+        self.assert_clean("def handler(req: Request):\n    value = req.query_params['x']\n    open('fixed.txt')")
+
     def test_literal_reassignment_clears_taint(self) -> None:
         """A known literal assignment removes tracked taint."""
         self.assert_clean("x = input()\nx = 'safe'\neval(x)")

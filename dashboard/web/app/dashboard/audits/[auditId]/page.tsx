@@ -29,8 +29,9 @@ const severityTone = {
   LOW: "border-blue-500/25 bg-blue-500/10 text-blue-300",
 };
 
-export default function AuditDetailPage({ params }: { params: { auditId: string } }) {
+export default function AuditDetailPage({ params }: { params: Promise<{ auditId: string }> }) {
   const { data: session } = useSession();
+  const [route, setRoute] = useState<{ auditId: string } | null>(null);
   const [audit, setAudit] = useState<Audit | null>(null);
   const [repo, setRepo] = useState<Repository | null>(null);
   const [diff, setDiff] = useState<string | null>(null);
@@ -38,17 +39,27 @@ export default function AuditDetailPage({ params }: { params: { auditId: string 
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const orgId = session?.orgId;
+  const auditId = route?.auditId;
   useEffect(() => {
-    if (!orgId) return;
     let active = true;
-    getAudit(params.auditId, orgId)
+    void params.then((resolved) => {
+      if (active) setRoute(resolved);
+    });
+    return () => {
+      active = false;
+    };
+  }, [params]);
+  useEffect(() => {
+    if (!orgId || !auditId) return;
+    let active = true;
+    getAudit(auditId, orgId)
       .then((value) => {
         if (active) setAudit(value);
       })
       .catch((caught) => {
         if (active) setError(caught instanceof Error ? caught.message : "Audit unavailable");
       });
-    getAuditDiff(params.auditId, orgId)
+    getAuditDiff(auditId, orgId)
       .then((value) => {
         if (active) setDiff(value);
       })
@@ -58,17 +69,17 @@ export default function AuditDetailPage({ params }: { params: { auditId: string 
     return () => {
       active = false;
     };
-  }, [orgId, params.auditId]);
+  }, [orgId, auditId]);
   const auditStatus = audit?.status;
   useEffect(() => {
-    if (!orgId || !auditStatus || !["QUEUED", "RUNNING"].includes(auditStatus)) return;
+    if (!orgId || !auditId || !auditStatus || !["QUEUED", "RUNNING"].includes(auditStatus)) return;
     const timer = window.setInterval(() => {
-      getAudit(params.auditId, orgId)
+      getAudit(auditId, orgId)
         .then(setAudit)
         .catch(() => undefined);
     }, 5_000);
     return () => window.clearInterval(timer);
-  }, [orgId, params.auditId, auditStatus]);
+  }, [orgId, auditId, auditStatus]);
   const repoId = audit?.repo_id;
   useEffect(() => {
     if (!orgId || !repoId) return;

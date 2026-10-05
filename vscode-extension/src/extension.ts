@@ -187,7 +187,7 @@ function toDiagnosticSeverity(severity: Severity): vscode.DiagnosticSeverity {
 }
 
 /** Offer edits only for local patterns with a precise replacement. */
-function createQuickFix(document: vscode.TextDocument, diagnostic: vscode.Diagnostic): vscode.CodeAction[] {
+export function createQuickFix(document: vscode.TextDocument, diagnostic: vscode.Diagnostic): vscode.CodeAction[] {
   if (diagnostic.source !== 'ai-guardian') return [];
   const code = String(diagnostic.code);
   if ((code === 'fallback:dom-text-content' || code === 'DOM XSS') && document.languageId !== 'python') {
@@ -202,7 +202,9 @@ function createQuickFix(document: vscode.TextDocument, diagnostic: vscode.Diagno
       diagnostic.range.start.line, start + '.innerHTML'.length), '.textContent');
     return [action];
   }
-  if ((code === 'fallback:python-literal-eval' || code === 'Unsafe Code Execution') && document.languageId === 'python') {
+  if ((code === 'fallback:python-literal-eval' ||
+      (code === 'Unsafe Code Execution' && /\beval\s*\(/.test(document.getText(diagnostic.range)))) &&
+      document.languageId === 'python') {
     const original = document.getText(diagnostic.range);
     const matches = [...original.matchAll(/\beval\s*\(/g)];
     if (matches.length !== 1) return [];
@@ -214,6 +216,42 @@ function createQuickFix(document: vscode.TextDocument, diagnostic: vscode.Diagno
     // module docstrings, and future imports without rewriting file structure.
     action.edit.replace(document.uri, new vscode.Range(diagnostic.range.start.line, start,
       diagnostic.range.start.line, start + 'eval'.length), "__import__('ast').literal_eval");
+    return [action];
+  }
+  if ((code === 'fallback:python-safe-exec' || code === 'Dynamic Execution' || code === 'Unsafe Code Execution') &&
+      document.languageId === 'python' && /^\s*exec\s*\([^\n]*\)\s*(?:#.*)?$/.test(document.lineAt(diagnostic.range.start.line).text)) {
+    const action = new vscode.CodeAction('Disable exec (changes behavior; implement explicit dispatch)', vscode.CodeActionKind.QuickFix);
+    action.diagnostics = [diagnostic];
+    action.edit = new vscode.WorkspaceEdit();
+    const source = document.lineAt(diagnostic.range.start.line).text;
+    const indent = source.match(/^\s*/)?.[0] ?? '';
+    action.edit.replace(document.uri, document.lineAt(diagnostic.range.start.line).range,
+      `${indent}raise RuntimeError("AI Guardian: replace exec with explicit dispatch")`);
+    return [action];
+  }
+  if (code === 'fallback:extract-secret' || code === 'fallback:extract-aws-key' || code === 'Hardcoded Secret' || code === 'Secret Leak') {
+    const source = document.lineAt(diagnostic.range.start.line).text;
+    if (code === 'fallback:extract-aws-key' || /\bAKIA[0-9A-Z]{16}\b/.test(source)) {
+      const assignment = source.match(/^(\s*(?:(?:const|let|var)\s+)?)([A-Za-z_$][\w$]*)(\s*:\s*string)?\s*=\s*(['"])AKIA[0-9A-Z]{16}\4\s*;?\s*$/);
+      if (!assignment) return [];
+      const replacement = document.languageId === 'python'
+        ? `${assignment[1]}${assignment[2]} = __import__('os').environ['AWS_ACCESS_KEY_ID']`
+        : `${assignment[1]}${assignment[2]}${assignment[3] ?? ''} = process.env.AWS_ACCESS_KEY_ID ?? (() => { throw new Error('AWS_ACCESS_KEY_ID is required'); })();`;
+      const action = new vscode.CodeAction('Load AWS key from environment', vscode.CodeActionKind.QuickFix);
+      action.diagnostics = [diagnostic];
+      action.edit = new vscode.WorkspaceEdit();
+      action.edit.replace(document.uri, document.lineAt(diagnostic.range.start.line).range, replacement);
+      return [action];
+    }
+    const assignment = source.match(/^(\s*(?:(?:const|let|var)\s+)?)(password|passwd|pwd)(\s*:\s*string)?\s*=\s*(['"])(?:\\.|(?!\4).)*\4\s*;?\s*$/i);
+    if (!assignment) return [];
+    const replacement = document.languageId === 'python'
+      ? `${assignment[1]}${assignment[2]} = __import__('os').environ['${assignment[2].toUpperCase()}']`
+      : `${assignment[1]}${assignment[2]}${assignment[3] ?? ''} = process.env.${assignment[2].toUpperCase()} ?? (() => { throw new Error('${assignment[2].toUpperCase()} is required'); })();`;
+    const action = new vscode.CodeAction('Load secret from environment', vscode.CodeActionKind.QuickFix);
+    action.diagnostics = [diagnostic];
+    action.edit = new vscode.WorkspaceEdit();
+    action.edit.replace(document.uri, document.lineAt(diagnostic.range.start.line).range, replacement);
     return [action];
   }
   return [];

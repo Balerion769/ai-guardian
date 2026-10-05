@@ -40,7 +40,7 @@ afterEach(() => {
 describe("audit status", () => {
   it("refreshes a queued audit on a five-second interval", async () => {
     const interval = vi.spyOn(window, "setInterval");
-    render(<AuditDetailPage params={{ auditId: "audit-1" }} />);
+    render(<AuditDetailPage params={Promise.resolve({ auditId: "audit-1" })} />);
     expect(await screen.findByText("Refreshing status every 5 seconds")).toBeInTheDocument();
     const polling = interval.mock.calls.find((call) => call[1] === 5_000);
     expect(polling).toBeDefined();

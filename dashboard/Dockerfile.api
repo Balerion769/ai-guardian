@@ -7,7 +7,7 @@ WORKDIR /app
 COPY requirements.txt requirements-dashboard.txt ./
 RUN python -m pip install --no-cache-dir -r requirements-dashboard.txt \
     && useradd --system --uid 10001 --create-home aiguardian
-COPY main.py ./
+COPY main.py alembic.ini ./
 COPY scanner ./scanner
 COPY dashboard ./dashboard
 USER aiguardian
