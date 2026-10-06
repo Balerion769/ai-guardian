@@ -90,6 +90,8 @@ The initial PostgreSQL initializer also applies idempotent billing column and co
 
 ## Production cloud deployment and GitHub App
 
+App JWTs carry a string issuer (numeric App ID represented as text), RS256 signatures, and a maximum nine-minute future lifetime, with a one-minute clock-skew allowance.
+
 GitHub setup callback identifiers are untrusted. An authenticated workspace administrator binds an installation only after App-JWT verification of account ownership; installation IDs are unique across workspaces. Signed PR deliveries resolve the tenant by stored installation and validate the repository owner. Unlinked or paused repositories are ignored. PR and API-key audits share billing admission checks. Repository discovery uses encrypted OAuth credentials server-side and returns paginated metadata only. The Next.js proxy limits operations to the active tenant and checks mutation origin.
 
 `docker-compose.prod.yml` builds separate Python 3.11 API and worker images plus the Next.js image. PostgreSQL, Redis, the schema initializer, API, worker, and web service have health checks; the API and web ports should be placed behind HTTPS while PostgreSQL and Redis stay private. `.env.prod.example` lists the required database, OAuth, Stripe, Ollama, Sentry, and GitHub App settings. Fly.io, Render, and Railway component deployment notes are in [`DEPLOY.md`](../DEPLOY.md).

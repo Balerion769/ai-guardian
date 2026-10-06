@@ -46,7 +46,7 @@ def app_jwt(settings: Settings) -> str:
         raise RuntimeError("GITHUB_APP_ID must be numeric") from exc
     now = int(time.time())
     return str(jwt.encode(
-        {"iat": now - 60, "exp": now + 540, "iss": app_id},
+        {"iat": now - 60, "exp": now + 540, "iss": str(app_id)},
         settings.github_app_private_key,
         algorithm="RS256",
     ))
