@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { ArrowUpRight, CheckCircle2, Github, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { GithubConnection } from "@/components/github-connection";
 
 export default function GithubAppSettingsPage() {
-  const installUrl = process.env.NEXT_PUBLIC_GITHUB_APP_INSTALL_URL || "https://github.com/apps/ai-guardian/installations/new";
+  const configured = process.env.GITHUB_APP_INSTALL_URL || process.env.NEXT_PUBLIC_GITHUB_APP_INSTALL_URL || "";
+  const installUrl = /^https:\/\/github\.com\/apps\/[a-z0-9-]+\/installations\/new$/.test(configured) ? configured : null;
   return (
     <>
       <div className="mb-8 flex items-end justify-between gap-4">
@@ -21,9 +23,10 @@ export default function GithubAppSettingsPage() {
             <CardDescription>Grant repository access to the GitHub App, then select which repositories it may audit.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href={installUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-300">
+            {installUrl ? <Link href={installUrl} className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-300">
               Install GitHub App <ArrowUpRight size={14} />
-            </Link>
+            </Link> : <p>GitHub App installation is not configured. Contact your deployment administrator.</p>}
+            <GithubConnection />
             <p className="mt-4 text-xs leading-6 text-slate-500">The app requests contents: read, pull requests: read/write, and checks: write. The webhook verifies every delivery signature before downloading a diff.</p>
           </CardContent>
         </Card>

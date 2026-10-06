@@ -21,6 +21,7 @@ import { RiskSparkline } from "@/components/charts";
 import { RiskScoreBadge } from "@/components/risk-score-badge";
 import { LoadingState, ErrorState } from "@/components/load-state";
 import { formatRelative } from "@/lib/utils";
+import { GithubRepoPicker } from "@/components/github-repo-picker";
 
 export default function RepositoriesPage() {
   const { data: session } = useSession();
@@ -64,6 +65,9 @@ export default function RepositoriesPage() {
           </Badge>
         }
       />
+      <GithubRepoPicker linked={state.repos.map(repo => repo.github_repo_full_name)} onLinked={() => {
+        if (session?.orgId) getRepos(session.orgId).then(repos => setState(current => current ? {...current, repos} : current)).catch(caught => setError(caught instanceof Error ? caught.message : "Refresh failed"));
+      }} />
       <Card>
         <CardContent className="flex items-center justify-between gap-3 border-b border-white/[.07] p-4">
           <div className="relative w-full max-w-xs">

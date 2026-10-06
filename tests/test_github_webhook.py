@@ -9,7 +9,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from dashboard.db.models import Audit, Organization
+from dashboard.db.models import Audit, Organization, Repository
 from dashboard.db.session import SessionLocal
 from tests.test_dashboard_audits import hosted
 
@@ -30,6 +30,8 @@ def test_signed_pull_request_queues_tenant_audit(hosted, monkeypatch):
     client, org_id, _key = hosted
     with SessionLocal.begin() as db:
         db.get(Organization, org_id).github_slug = "example"
+        db.get(Organization, org_id).github_installation_id = 42
+        db.add(Repository(org_id=org_id, github_repo_full_name="Example/repo"))
     from dashboard.api import github_webhooks
 
     monkeypatch.setenv("GITHUB_APP_WEBHOOK_SECRET", "webhook-secret")

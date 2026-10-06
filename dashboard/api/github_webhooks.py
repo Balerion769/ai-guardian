@@ -16,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from dashboard.config import get_settings
-from dashboard.db.models import Audit, Organization, Repository
+from dashboard.db.models import Audit, Organization, Repository, User
 from dashboard.db.session import get_db, tenant_scope
 from dashboard.github_app import installation_token, pull_request_diff
+from dashboard.api.billing_middleware import enforce_audit_access
 
 logger = logging.getLogger(__name__)
 github_webhook_router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
@@ -90,20 +91,23 @@ def github_webhook(request: Request, body: bytes = Body(...), db: Session = Depe
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid pull request commit")
     full_name = _repository_path(payload)
     owner = full_name.split("/", 1)[0]
-    organization = db.scalar(select(Organization).where(Organization.github_slug.ilike(owner)).with_for_update())
+    organization = db.scalar(select(Organization).where(
+        Organization.github_installation_id == installation_id).with_for_update())
     if organization is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "GitHub organization is not linked")
-    organization.github_installation_id = installation_id
-    organization.github_app_installed_at = datetime.now(timezone.utc)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "GitHub installation is not connected")
+    expected_owner = organization.github_slug or db.get(User, organization.owner_id).login
+    if owner.casefold() != expected_owner.casefold():
+        raise HTTPException(403, "Repository owner differs from installation account")
     tenant_scope(db, organization.id)
     repository = db.scalar(select(Repository).where(
         Repository.org_id == organization.id,
         Repository.github_repo_full_name.ilike(full_name),
     ))
     if repository is None:
-        repository = Repository(org_id=organization.id, github_repo_full_name=full_name)
-        db.add(repository)
-        db.flush()
+        return {"status": "ignored", "reason": "Repository is not linked"}
+    if not repository.is_active:
+        return {"status": "ignored", "reason": "Repository is inactive"}
+    enforce_audit_access(db, organization)
     try:
         token = installation_token(settings, installation_id)
         diff = pull_request_diff(settings, token, full_name, pr_number)

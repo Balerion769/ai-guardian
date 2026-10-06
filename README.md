@@ -208,6 +208,8 @@ To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable an
 
 ## Current limits and safe use
 
+- GitHub discovery lists accessible repositories page by page; Free supports three linked repositories. Automatic PR audits require a registered App, installation verified against the workspace account, and an active linked repository. Granting installation access does not scan every file. The dashboard does not guess an App slug when configuration is absent.
+
 - Free hosting disables semantic review and executes audits inline. Render cold starts can exceed the dashboard's 10-second request timeout; wake `/health` and retry. Free tiers are suitable for a personal demo, have provider quotas, and do not provide production availability. Cloud mode never falls back to ephemeral SQLite; only explicit local development can do so.
 - The live demo API is in Singapore, while its user-created Neon database is in Ohio. Cross-region database queries add latency; colocate them when provisioning another deployment.
 

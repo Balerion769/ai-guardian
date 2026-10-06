@@ -19,6 +19,23 @@ from dashboard.config import Settings
 logger = logging.getLogger(__name__)
 
 
+async def installation_details(settings: Settings, installation_id: int) -> dict[str, Any]:
+    """Read an installation owned by this App using its signed JWT."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(
+            f"{settings.github_api_url.rstrip('/')}/app/installations/{installation_id}",
+            headers={"Authorization": f"Bearer {app_jwt(settings)}",
+                     "Accept": "application/vnd.github+json"},
+        )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or not isinstance(payload.get("account"), dict):
+        raise ValueError("Invalid GitHub installation response")
+    if payload.get("suspended_at"):
+        raise ValueError("GitHub installation is suspended")
+    return payload
+
+
 def app_jwt(settings: Settings) -> str:
     """Create a GitHub App JWT valid for at most ten minutes."""
     if not settings.github_app_id or not settings.github_app_private_key:

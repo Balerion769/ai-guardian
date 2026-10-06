@@ -5,9 +5,10 @@ from __future__ import annotations
 import re
 import secrets
 from uuid import UUID, uuid4
+from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from starlette.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 from dashboard.config import get_settings
 from dashboard.db.models import ApiKey, Organization, OrgMember, Repository, User
 from dashboard.db.session import get_db, tenant_scope
+from dashboard.github_app import installation_details
 from dashboard.security import decrypt_github_token, hash_api_key, require_org_member, require_user
 
 
@@ -42,6 +44,11 @@ class ApiKeyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
+class InstallationConnect(BaseModel):
+    """Untrusted setup callback identifier, verified against GitHub before use."""
+    installation_id: int = Field(strict=True, gt=0)
+
+
 def _org_json(org: Organization, role: str | None = None) -> dict:
     result = {
         "id": str(org.id),
@@ -56,7 +63,7 @@ def _org_json(org: Organization, role: str | None = None) -> dict:
     return result
 
 
-async def _github_get(user: User, path: str) -> dict:
+async def _github_get(user: User, path: str) -> dict | list:
     if not user.github_token_ciphertext:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "GitHub login required")
     token = decrypt_github_token(user.github_token_ciphertext)
@@ -76,7 +83,76 @@ async def _github_get(user: User, path: str) -> dict:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "GitHub access required")
     if response.status_code != 200:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "GitHub access check unavailable")
-    return response.json()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(503, "Invalid GitHub response") from exc
+    if not isinstance(payload, (dict, list)):
+        raise HTTPException(503, "Invalid GitHub response")
+    return payload
+
+
+@orgs_router.get("/{org_id}/github-repos")
+async def discover_repos(org_id: UUID, request: Request,
+                         page: int = Query(default=1, ge=1, le=10000),
+                         db: Session = Depends(get_db)) -> dict:
+    """List paginated repository metadata accessible to the signed-in user."""
+    user = require_user(request, db)
+    require_org_member(org_id, user, db, "admin")
+    org = db.get(Organization, org_id)
+    payload = await _github_get(user, f"user/repos?per_page=100&page={page}&sort=updated")
+    if not isinstance(payload, list):
+        raise HTTPException(503, "Invalid GitHub repository response")
+    items = []
+    for repo in payload:
+        if not isinstance(repo, dict) or not isinstance(repo.get("full_name"), str):
+            continue
+        permissions = repo.get("permissions", {})
+        if not isinstance(permissions, dict) or not (permissions.get("push") or permissions.get("admin")):
+            continue
+        if org.github_slug and repo["full_name"].split("/")[0].casefold() != org.github_slug.casefold():
+            continue
+        items.append({"full_name": repo["full_name"], "private": bool(repo.get("private")),
+                      "default_branch": str(repo.get("default_branch") or "main")})
+    return {"items": items, "next_page": page + 1 if len(payload) == 100 else None}
+
+
+@orgs_router.get("/{org_id}/github-installation")
+def installation_status(org_id: UUID, request: Request, db: Session = Depends(get_db)) -> dict:
+    """Return the verified workspace installation identifier without credentials."""
+    user = require_user(request, db)
+    require_org_member(org_id, user, db)
+    org = db.get(Organization, org_id)
+    return {"installation_id": org.github_installation_id}
+
+
+@orgs_router.post("/{org_id}/github-installation")
+async def connect_installation(org_id: UUID, payload: InstallationConnect, request: Request,
+                               db: Session = Depends(get_db)) -> dict:
+    """Bind only an installation of this App owned by the workspace account."""
+    user = require_user(request, db)
+    require_org_member(org_id, user, db, "admin")
+    org = db.scalar(select(Organization).where(Organization.id == org_id).with_for_update())
+    try:
+        details = await installation_details(get_settings(), payload.installation_id)
+    except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+        raise HTTPException(503, "GitHub installation verification unavailable") from exc
+    account = details["account"]
+    owner = db.get(User, org.owner_id)
+    if org.github_slug:
+        valid = account.get("type") == "Organization" and str(account.get("login", "")).casefold() == org.github_slug.casefold()
+    else:
+        valid = account.get("type") == "User" and account.get("id") == owner.github_id
+    if not valid:
+        raise HTTPException(403, "Installation account does not own this workspace")
+    existing = db.scalar(select(Organization.id).where(
+        Organization.github_installation_id == payload.installation_id, Organization.id != org_id))
+    if existing:
+        raise HTTPException(409, "Installation already connected to another workspace")
+    org.github_installation_id = payload.installation_id
+    org.github_app_installed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"installation_id": payload.installation_id}
 
 
 @orgs_router.post("", status_code=status.HTTP_201_CREATED)

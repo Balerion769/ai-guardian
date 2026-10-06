@@ -51,6 +51,13 @@ describe("findings filters", () => {
 });
 
 describe("server proxy boundary", () => {
+  it("allows GitHub discovery and binding only in the active organization", () => {
+    expect(isAllowedProxyPath(["orgs", "mine", "github-repos"], "mine", "GET")).toBe(true);
+    expect(isAllowedProxyPath(["orgs", "mine", "repos"], "mine", "POST")).toBe(true);
+    expect(isAllowedProxyPath(["orgs", "mine", "github-installation"], "mine", "POST")).toBe(true);
+    expect(isAllowedProxyPath(["orgs", "other", "github-installation"], "mine", "POST")).toBe(false);
+    expect(isAllowedProxyPath(["orgs", "mine", "github-repos"], "mine", "POST")).toBe(false);
+  });
   it("rejects another organization and unknown paths", () => {
     expect(isAllowedProxyPath(["orgs", "other", "stats"], "mine", "GET")).toBe(false);
     expect(isAllowedProxyPath(["orgs", "mine", "stats"], "mine", "GET")).toBe(true);

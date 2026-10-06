@@ -88,6 +88,9 @@ def test_free_webhook_persists_inline_and_publishes_check(hosted, monkeypatch):
     monkeypatch.setenv("GITHUB_APP_WEBHOOK_SECRET", "webhook-test-secret")
     with SessionLocal.begin() as session:
         session.get(Organization, org_id).github_slug = "example"
+        session.get(Organization, org_id).github_installation_id = 42
+        from dashboard.db.models import Repository
+        session.add(Repository(org_id=org_id, github_repo_full_name="Example/repo"))
     monkeypatch.setattr(github_webhooks, "installation_token", lambda *args: "test-token")
     monkeypatch.setattr(github_webhooks, "pull_request_diff", lambda *args: "diff --git a/x.py b/x.py\n@@ -0,0 +1 @@\n+eval(user_input)\n")
     body = json.dumps(_payload()).encode()
