@@ -1,5 +1,5 @@
 # Free API + external Neon PostgreSQL. Free Render workers are unavailable.
-# Static-only audits execute inline, so Upstash Redis is optional in this profile.
+# Inline audits support static or authenticated remote inference without Redis.
 services:
   - type: web
     name: ai-guardian-api
@@ -17,6 +17,8 @@ services:
         value: hosted
       - key: STATIC_ONLY_MODE
         value: "1"
+      - key: INLINE_AUDITS
+        value: "1"
       - key: DASHBOARD_DEV_MODE
         value: "0"
       - key: DATABASE_URL
@@ -33,4 +35,4 @@ services:
         sync: false
 # Do not add a free Render Postgres here: its database expires after 30 days.
 # For a paid RQ worker later, supply REDIS_URL using Upstash's rediss:// TCP URL,
-# not its HTTPS REST endpoint, and set STATIC_ONLY_MODE=0 with private Ollama.
+# not its HTTPS REST endpoint, and set INLINE_AUDITS=0 to use the worker.

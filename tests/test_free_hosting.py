@@ -43,6 +43,21 @@ def test_static_only_failure_is_error(hosted, monkeypatch):
     assert response.json()["status"] == "ERROR"
 
 
+def test_inline_execution_can_use_llm_without_redis(hosted, monkeypatch):
+    """Job execution mode does not silently disable semantic analysis."""
+    from unittest.mock import AsyncMock
+    client, _, key = hosted
+    monkeypatch.setenv("INLINE_AUDITS", "1")
+    monkeypatch.setenv("STATIC_ONLY_MODE", "0")
+    model = AsyncMock(return_value=[])
+    with patch("dashboard.api.audits.Redis.from_url", side_effect=AssertionError("Redis forbidden")), \
+         patch("dashboard.worker.audit_worker.AIAuditor.analyze", model):
+        response = client.post("/api/v1/audit", json={"diff_content": "print('hello')", "language": "python"}, headers={"X-API-Key": key})
+    assert response.json()["status"] == "PASSED"
+    assert response.json()["model_used"] != "static-only"
+    model.assert_awaited_once()
+
+
 def test_health_and_landing_need_no_database_connection(hosted, monkeypatch):
     """Sleeping or unavailable storage does not fail the platform liveness check."""
     monkeypatch.setattr("dashboard.db.session.get_engine", lambda: pytest.fail("Database accessed"))

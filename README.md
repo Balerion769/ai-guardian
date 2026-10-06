@@ -208,6 +208,8 @@ To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable an
 
 ## Current limits and safe use
 
+- Local LLMs can serve hosted audits through an authenticated HTTPS generation bridge; see [local LLM setup](docs/local-llm-hosted.md). `INLINE_AUDITS=1` permits LLM review without Redis. Keep the machine awake, warm the model, and review real audit results: the five-second deadline can still cause static fallback. A tunnel provider can inspect code in transit.
+
 - Free-hosted PR events are acknowledged before diff retrieval and analysis, avoiding GitHub's 10-second delivery timeout. They run in process after acknowledgement; a process restart can interrupt a job. Retry the PR event if an audit remains queued. Use Redis workers for durable queued processing.
 
 - GitHub deliveries require the same webhook secret in GitHub and `GITHUB_APP_WEBHOOK_SECRET` in the API. The receiver verifies raw bytes before JSON parsing and bounds webhook payloads at 2 MB.

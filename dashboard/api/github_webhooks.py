@@ -123,13 +123,14 @@ def github_webhook(request: Request, body: bytes, db: Session,
     if not repository.is_active:
         return {"status": "ignored", "reason": "Repository is inactive"}
     enforce_audit_access(db, organization)
-    if settings.static_only_mode:
+    if settings.static_only_mode or settings.inline_audits:
         audit = Audit(
             org_id=organization.id, repo_id=repository.id, pr_number=pr_number,
             commit_sha=commit_sha, branch=branch[:255], triggered_by=organization.owner_id,
             status="QUEUED", risk_score=0, total_findings=0, high_count=0,
             medium_count=0, low_count=0, diff_size=0, latency_ms=0.0,
-            model_used="static-only", summary="GitHub audit accepted for analysis.",
+            model_used="static-only" if settings.static_only_mode else settings.ollama_model,
+            summary="GitHub audit accepted for analysis.",
         )
         db.add(audit)
         db.flush()

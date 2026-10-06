@@ -90,6 +90,8 @@ The initial PostgreSQL initializer also applies idempotent billing column and co
 
 ## Production cloud deployment and GitHub App
 
+Model mode and job execution are independent: `INLINE_AUDITS=1` runs the existing worker without Redis while `STATIC_ONLY_MODE=0` enables semantic review. The auditor supports `OLLAMA_API_KEY` bearer authentication and refuses to send it over remote plaintext HTTP. `scanner.ollama_bridge` forwards bounded generation to fixed loopback Ollama, permits only one model, disables streaming and management APIs, and authenticates every inference request. LLM outputs remain schema-validated by the scanner. The developer machine and TLS tunnel become availability dependencies.
+
 In free static-only mode, PR metadata and quota reservation are committed before returning 202. A post-response task fetches the diff and runs the scanner in separate tenant-scoped transactions. This avoids GitHub's 10-second acknowledgement deadline. Source remains memory-only; these tasks are not durable across process restarts. Fetch failures mark the audit ERROR. Redis mode retains its queued worker path.
 
 The GitHub route reads a bounded raw request stream before parsing JSON; declaring JSON input as a FastAPI bytes body would reject real GitHub deliveries with 422. HMAC verification uses the original bytes. Synchronous database and GitHub processing runs in the thread pool. The sender and receiver must share a nonempty webhook secret.

@@ -41,6 +41,7 @@ class Settings:
     sentry_dsn: str
     sentry_environment: str
     static_only_mode: bool = False
+    inline_audits: bool = False
 
     @property
     def secure_cookie(self) -> bool:
@@ -92,6 +93,7 @@ def get_settings() -> Settings:
         sentry_dsn=os.getenv("SENTRY_DSN", ""),
         sentry_environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
         static_only_mode=os.getenv("STATIC_ONLY_MODE", "0") == "1",
+        inline_audits=os.getenv("INLINE_AUDITS", "0") == "1",
     )
     if not settings.database_url:
         raise ValueError("DATABASE_URL is required for hosted mode")

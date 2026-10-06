@@ -5,6 +5,7 @@ import hashlib
 import logging
 import math
 import os
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
@@ -43,10 +44,15 @@ class AIAuditor:
         model: str | None = None,
         timeout_seconds: float | None = None,
         client: httpx.AsyncClient | None = None,
+        api_key: str | None = None,
     ) -> None:
         """Configure the Ollama endpoint and optionally reuse an HTTP client."""
         self.base_url = base_url or os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
         self.model = model or os.getenv("OLLAMA_MODEL", "qwen2.5-coder")
+        self._api_key = api_key if api_key is not None else os.getenv("OLLAMA_API_KEY", "")
+        destination = urlsplit(self.base_url)
+        if self._api_key and destination.scheme != "https" and destination.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError("Authenticated remote inference requires HTTPS")
         configured_timeout = timeout_seconds if timeout_seconds is not None else os.getenv("OLLAMA_TIMEOUT_SECONDS", "5")
         requested_timeout = float(configured_timeout)
         if not math.isfinite(requested_timeout) or requested_timeout <= 0:
@@ -87,7 +93,8 @@ class AIAuditor:
         for attempt in range(4):
             if attempt:
                 payload["prompt"] = original_prompt + "\nRepair: Previous output invalid JSON or schema. Return ONLY a valid JSON array with all required fields, including numeric confidence."
-            response = await client.post(self.base_url, json=payload)
+            headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
+            response = await client.post(self.base_url, json=payload, headers=headers)
             response.raise_for_status()
             try:
                 envelope = OllamaEnvelope.model_validate(response.json())
