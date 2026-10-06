@@ -52,6 +52,7 @@ def test_signed_pull_request_queues_tenant_audit(hosted, monkeypatch):
     signature = "sha256=" + hmac.new(b"webhook-secret", body, hashlib.sha256).hexdigest()
     response = client.post("/api/v1/webhooks/github", content=body, headers={
         "X-GitHub-Event": "pull_request", "X-Hub-Signature-256": signature,
+        "Content-Type": "application/json",
     })
     assert response.status_code == 202
     audit_id = response.json()["audit_id"]
@@ -69,3 +70,15 @@ def test_unsigned_pull_request_is_rejected(hosted, monkeypatch):
     body = json.dumps(_payload()).encode()
     response = client.post("/api/v1/webhooks/github", content=body, headers={"X-GitHub-Event": "pull_request"})
     assert response.status_code == 401
+
+
+def test_json_ping_verifies_raw_bytes(hosted, monkeypatch):
+    """A signed JSON ping succeeds, while a changed payload fails verification."""
+    client, _, _ = hosted
+    monkeypatch.setenv("GITHUB_APP_WEBHOOK_SECRET", "webhook-secret")
+    body = b'{"zen": "test ping"}'
+    signature = "sha256=" + hmac.new(b"webhook-secret", body, hashlib.sha256).hexdigest()
+    headers = {"Content-Type": "application/json", "X-GitHub-Event": "ping",
+               "X-Hub-Signature-256": signature}
+    assert client.post("/api/v1/webhooks/github", content=body, headers=headers).status_code == 202
+    assert client.post("/api/v1/webhooks/github", content=body + b" ", headers=headers).status_code == 401

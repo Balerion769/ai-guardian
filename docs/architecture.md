@@ -90,6 +90,8 @@ The initial PostgreSQL initializer also applies idempotent billing column and co
 
 ## Production cloud deployment and GitHub App
 
+The GitHub route reads a bounded raw request stream before parsing JSON; declaring JSON input as a FastAPI bytes body would reject real GitHub deliveries with 422. HMAC verification uses the original bytes. Synchronous database and GitHub processing runs in the thread pool. The sender and receiver must share a nonempty webhook secret.
+
 App JWTs carry a string issuer (numeric App ID represented as text), RS256 signatures, and a maximum nine-minute future lifetime, with a one-minute clock-skew allowance.
 
 GitHub setup callback identifiers are untrusted. An authenticated workspace administrator binds an installation only after App-JWT verification of account ownership; installation IDs are unique across workspaces. Signed PR deliveries resolve the tenant by stored installation and validate the repository owner. Unlinked or paused repositories are ignored. PR and API-key audits share billing admission checks. Repository discovery uses encrypted OAuth credentials server-side and returns paginated metadata only. The Next.js proxy limits operations to the active tenant and checks mutation origin.

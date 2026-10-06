@@ -9,7 +9,8 @@ import logging
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from starlette.concurrency import run_in_threadpool
 from redis import Redis
 from rq import Queue
 from sqlalchemy import select
@@ -58,7 +59,19 @@ def _repository_path(payload: dict) -> str:
 
 
 @github_webhook_router.post("/github", status_code=status.HTTP_202_ACCEPTED)
-def github_webhook(request: Request, body: bytes = Body(...), db: Session = Depends(get_db)) -> dict[str, str]:
+async def receive_github_webhook(request: Request, db: Session = Depends(get_db)) -> dict[str, str]:
+    """Read bounded raw bytes before JSON parsing so GitHub signatures remain valid."""
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > 2_000_000:
+            raise HTTPException(413, "GitHub webhook payload exceeds size limit")
+        chunks.append(chunk)
+    return await run_in_threadpool(github_webhook, request, b"".join(chunks), db)
+
+
+def github_webhook(request: Request, body: bytes, db: Session) -> dict[str, str]:
     """Queue a PR audit after authenticating and fetching its GitHub diff."""
     settings = get_settings()
     if not verify_signature(body, request.headers.get("x-hub-signature-256"), settings.github_app_webhook_secret):

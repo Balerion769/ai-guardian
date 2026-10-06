@@ -208,6 +208,8 @@ To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable an
 
 ## Current limits and safe use
 
+- GitHub deliveries require the same webhook secret in GitHub and `GITHUB_APP_WEBHOOK_SECRET` in the API. The receiver verifies raw bytes before JSON parsing and bounds webhook payloads at 2 MB.
+
 - GitHub App JWT issuers are encoded as strings for current PyJWT compatibility. Live PR smoke checks use an isolated draft branch; no probe is executed or merged.
 
 - GitHub discovery lists accessible repositories page by page; Free supports three linked repositories. Automatic PR audits require a registered App, installation verified against the workspace account, and an active linked repository. Granting installation access does not scan every file. The dashboard does not guess an App slug when configuration is absent.
