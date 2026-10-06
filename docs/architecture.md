@@ -18,13 +18,18 @@ Uvicorn worker using `PORT`. Neon supplies durable PostgreSQL; Vercel deploys
 runtime role preserve forced tenant RLS. Only explicit local development may
 use a SQLite fallback; a configured database is never silently replaced.
 
-With `STATIC_ONLY_MODE=1`, authenticated audit submissions and verified GitHub
-PR webhooks execute the existing worker function within the request after the
-audit row commits. No Redis connection or Ollama request occurs. The worker
-persists static plus taint results with `model_used=static-only`; a static
-engine failure is `ERROR`, never a clean approval. This avoids paid background
-workers and incomplete queued jobs when the free API sleeps. Regular hosting
-keeps the existing RQ flow when the flag is off.
+With `STATIC_ONLY_MODE=1`, no Ollama request occurs. With `INLINE_AUDITS=1`,
+authenticated submissions execute the existing worker function in the request
+after the audit row commits, without Redis. Verified GitHub PR webhooks commit
+metadata and return 202 before a post-response task fetches and scans the diff.
+Static-only results use `model_used=static-only`; a static engine failure is
+`ERROR`, never a clean approval. When both flags are off, hosting uses RQ.
+On October 6, 2026, the public API was configured with `INLINE_AUDITS=1` and
+`STATIC_ONLY_MODE=0`: HTTPS bearer authentication connects it to loopback Ollama
+through a generation-only bridge and a temporary Cloudflare tunnel. A persisted
+RAG-System PR audit verified one completed AI pass in 3.09 seconds. Local machine
+or tunnel outages cause explicit static fallback; this is a testing setup rather
+than durable inference hosting.
 
 The dashboard retains its same-origin `/api/dashboard` proxy and private
 backend session cookie. Server upstream configuration resolves

@@ -32,7 +32,7 @@ Live demo (free tier): [Dashboard](https://ai-guardian-theta.vercel.app) · [API
 
 For a personal demo without GPU costs, follow [DEPLOY_FREE.md](DEPLOY_FREE.md): one free Render API, Neon Postgres, and Vercel Hobby. `STATIC_ONLY_MODE=1` executes static and taint analysis inline with persisted results and authenticated org access. Redis is optional for this profile. Select branch `ast-security-rules` and Vercel root directory `dashboard/web`. GitHub sign-in, workspace creation, dashboard statistics, and HTTP 200 API health were verified on October 5, 2026.
 
-The hosted dashboard in [`dashboard/web`](dashboard/web/README.md) provides GitHub OAuth, organization-scoped API keys, PostgreSQL audit history, Redis workers, Stripe plans, GitHub App pull-request checks, and Prometheus/Sentry observability. Deploy the full profile with [`docker-compose.prod.yml`](docker-compose.prod.yml) using the [deployment guide](DEPLOY.md). The free public demo uses static-only analysis; Stripe billing, a GitHub App installation, and a separate Redis worker are not configured there.
+The hosted dashboard in [`dashboard/web`](dashboard/web/README.md) provides GitHub OAuth, organization-scoped API keys, PostgreSQL audit history, Redis workers, Stripe plans, GitHub App pull-request checks, and Prometheus/Sentry observability. Deploy the full profile with [`docker-compose.prod.yml`](docker-compose.prod.yml) using the [deployment guide](DEPLOY.md). The free public demo has GitHub App PR checks and, as verified on October 6, 2026, authenticated local Ollama inference through a temporary tunnel. Stripe billing and a separate Redis worker are not configured there. See [local LLM operation and limits](docs/local-llm-hosted.md).
 
 ```mermaid
 flowchart LR
@@ -207,6 +207,8 @@ Run `docker compose up --build -d` to start PostgreSQL, Redis, a schema initiali
 To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable and 25 safe), run `$env:BENCHMARK_MODE='1'; python -m tests.owasp_benchmark` (PowerShell) or `BENCHMARK_MODE=1 python -m tests.owasp_benchmark` (macOS/Linux). Benchmark mode disables the production candidate sampling cap, uses static and taint analysis only, and prints a precision/recall table. It requires network access. On the sampled seed-42 set in this environment, static precision was `0.938` and recall was `0.600` (15 TP, 1 FP, 10 FN, 24 TN); this is a limited sample, not a production accuracy claim.
 
 ## Current limits and safe use
+
+- The live test uses `qwen2.5-coder:1.5b`. It missed vulnerable local probes and produced a LOW finding on a clean PR. Treat semantic findings and clean results as review aids, not security approval. The temporary tunnel requires an awake local machine and can expire; failures fall back to static analysis with an incomplete-review summary.
 
 - Local LLMs can serve hosted audits through an authenticated HTTPS generation bridge; see [local LLM setup](docs/local-llm-hosted.md). `INLINE_AUDITS=1` permits LLM review without Redis. Keep the machine awake, warm the model, and review real audit results: the five-second deadline can still cause static fallback. A tunnel provider can inspect code in transit.
 

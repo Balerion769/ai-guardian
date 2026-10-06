@@ -72,3 +72,12 @@ local eval, shell-command, and SQL-concatenation probes. Static and taint rules
 remain required. The locally installed `gemma3:4b` exceeded the five-second
 deadline in both clean and vulnerable probes. Hosted activation and a completed
 GitHub audit must be checked separately after configuring the Render environment.
+
+The hosted configuration was subsequently enabled and verified with a redelivered
+`RAG-System` draft PR webhook. GitHub returned HTTP 202 and the completed check
+was successful. The [persisted audit](https://ai-guardian-theta.vercel.app/dashboard/audits/a8b10b81-a89a-44b7-9d6c-8dfbd74afbc5)
+recorded `model_used=qwen2.5-coder:1.5b`, `ai_count=1`, `static_count=0`, risk 5,
+and latency 3088.68 ms. The LOW finding was on a clean probe, demonstrating a
+false-positive limitation. Hosted metrics recorded one successful LLM pass and
+zero errors. An earlier temporary tunnel expired and was replaced; monitor
+availability and update the Render URL after replacement.
