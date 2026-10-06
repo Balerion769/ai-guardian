@@ -73,7 +73,7 @@ def test_local_api_skips_ollama(monkeypatch):
     assert response.json()["ai_count"] == 0
 
 
-def test_free_webhook_persists_inline_and_publishes_check(hosted, monkeypatch):
+def test_free_webhook_acknowledges_and_publishes_check(hosted, monkeypatch):
     """A verified PR delivery completes without leaving a job in an unused queue."""
     import hashlib
     import hmac
@@ -101,8 +101,37 @@ def test_free_webhook_persists_inline_and_publishes_check(hosted, monkeypatch):
         response = client.post("/api/v1/webhooks/github", content=body,
                                headers={"X-GitHub-Event": "pull_request", "X-Hub-Signature-256": signature})
     assert response.status_code == 202
-    assert response.json()["status"] == "processed"
+    assert response.json()["status"] == "accepted"
     with SessionLocal() as session:
         audit = session.get(Audit, UUID(response.json()["audit_id"]))
         assert audit.status == "FAILED"
     assert publish.call_args.args[2] == "failure"
+
+
+def test_free_webhook_defers_github_network_until_after_response(hosted, monkeypatch):
+    """Registration returns without making the slow GitHub diff request."""
+    import hashlib
+    import hmac
+    import json
+    from fastapi import BackgroundTasks
+    from starlette.requests import Request
+    from dashboard.api.github_webhooks import github_webhook
+    from dashboard.db.models import Organization, Repository
+    from tests.test_github_webhook import _payload
+    _, org_id, _ = hosted
+    monkeypatch.setenv("STATIC_ONLY_MODE", "1")
+    monkeypatch.setenv("GITHUB_APP_WEBHOOK_SECRET", "webhook-test-secret")
+    with SessionLocal.begin() as db:
+        org = db.get(Organization, org_id)
+        org.github_slug = "example"
+        org.github_installation_id = 42
+        db.add(Repository(org_id=org_id, github_repo_full_name="Example/repo"))
+    body = json.dumps(_payload()).encode()
+    signature = "sha256=" + hmac.new(b"webhook-test-secret", body, hashlib.sha256).hexdigest()
+    request = Request({"type": "http", "headers": [(b"x-github-event", b"pull_request"),
+                      (b"x-hub-signature-256", signature.encode())]})
+    tasks = BackgroundTasks()
+    with SessionLocal() as db, patch("dashboard.api.github_webhooks.installation_token", side_effect=AssertionError("Network before acknowledgement")):
+        result = github_webhook(request, body, db, tasks)
+    assert result["status"] == "accepted"
+    assert len(tasks.tasks) == 1

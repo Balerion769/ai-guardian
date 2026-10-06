@@ -208,6 +208,8 @@ To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable an
 
 ## Current limits and safe use
 
+- Free-hosted PR events are acknowledged before diff retrieval and analysis, avoiding GitHub's 10-second delivery timeout. They run in process after acknowledgement; a process restart can interrupt a job. Retry the PR event if an audit remains queued. Use Redis workers for durable queued processing.
+
 - GitHub deliveries require the same webhook secret in GitHub and `GITHUB_APP_WEBHOOK_SECRET` in the API. The receiver verifies raw bytes before JSON parsing and bounds webhook payloads at 2 MB.
 
 - GitHub App JWT issuers are encoded as strings for current PyJWT compatibility. Live PR smoke checks use an isolated draft branch; no probe is executed or merged.

@@ -9,7 +9,7 @@ import logging
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from starlette.concurrency import run_in_threadpool
 from redis import Redis
 from rq import Queue
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from dashboard.config import get_settings
 from dashboard.db.models import Audit, Organization, Repository, User
-from dashboard.db.session import get_db, tenant_scope
+from dashboard.db.session import SessionLocal, get_db, tenant_scope
 from dashboard.github_app import installation_token, pull_request_diff
 from dashboard.api.billing_middleware import enforce_audit_access
 
@@ -59,7 +59,8 @@ def _repository_path(payload: dict) -> str:
 
 
 @github_webhook_router.post("/github", status_code=status.HTTP_202_ACCEPTED)
-async def receive_github_webhook(request: Request, db: Session = Depends(get_db)) -> dict[str, str]:
+async def receive_github_webhook(request: Request, background_tasks: BackgroundTasks,
+                                 db: Session = Depends(get_db)) -> dict[str, str]:
     """Read bounded raw bytes before JSON parsing so GitHub signatures remain valid."""
     chunks: list[bytes] = []
     size = 0
@@ -68,10 +69,11 @@ async def receive_github_webhook(request: Request, db: Session = Depends(get_db)
         if size > 2_000_000:
             raise HTTPException(413, "GitHub webhook payload exceeds size limit")
         chunks.append(chunk)
-    return await run_in_threadpool(github_webhook, request, b"".join(chunks), db)
+    return await run_in_threadpool(github_webhook, request, b"".join(chunks), db, background_tasks)
 
 
-def github_webhook(request: Request, body: bytes, db: Session) -> dict[str, str]:
+def github_webhook(request: Request, body: bytes, db: Session,
+                   background_tasks: BackgroundTasks) -> dict[str, str]:
     """Queue a PR audit after authenticating and fetching its GitHub diff."""
     settings = get_settings()
     if not verify_signature(body, request.headers.get("x-hub-signature-256"), settings.github_app_webhook_secret):
@@ -121,6 +123,21 @@ def github_webhook(request: Request, body: bytes, db: Session) -> dict[str, str]
     if not repository.is_active:
         return {"status": "ignored", "reason": "Repository is inactive"}
     enforce_audit_access(db, organization)
+    if settings.static_only_mode:
+        audit = Audit(
+            org_id=organization.id, repo_id=repository.id, pr_number=pr_number,
+            commit_sha=commit_sha, branch=branch[:255], triggered_by=organization.owner_id,
+            status="QUEUED", risk_score=0, total_findings=0, high_count=0,
+            medium_count=0, low_count=0, diff_size=0, latency_ms=0.0,
+            model_used="static-only", summary="GitHub audit accepted for analysis.",
+        )
+        db.add(audit)
+        db.flush()
+        audit_id, org_id = str(audit.id), str(organization.id)
+        db.commit()
+        background_tasks.add_task(_fetch_and_process_github_audit, audit_id, org_id,
+                                  installation_id, full_name, pr_number)
+        return {"status": "accepted", "audit_id": audit_id}
     try:
         token = installation_token(settings, installation_id)
         diff = pull_request_diff(settings, token, full_name, pr_number)
@@ -150,15 +167,6 @@ def github_webhook(request: Request, body: bytes, db: Session) -> dict[str, str]
     )
     db.add(audit)
     db.flush()
-    if settings.static_only_mode:
-        from dashboard.worker.audit_worker import process_audit
-        audit_id, org_id = str(audit.id), str(organization.id)
-        db.commit()  # The worker uses separate transactions and must see the row.
-        try:
-            process_audit(audit_id, org_id, diff, _language_from_diff(diff))
-        except Exception as exc:
-            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Static audit processing failed") from exc
-        return {"status": "processed", "audit_id": audit_id}
     try:
         queue = Queue("audits", connection=Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2))
         queue.enqueue(
@@ -176,3 +184,31 @@ def github_webhook(request: Request, body: bytes, db: Session) -> dict[str, str]
     logger.info("github_audit_queued org_id=%s repo=%s pr=%d audit_id=%s diff_bytes=%d",
                 organization.id, full_name, pr_number, audit.id, len(diff.encode("utf-8")))
     return {"status": "queued", "audit_id": str(audit.id)}
+
+
+def _fetch_and_process_github_audit(audit_id: str, org_id: str, installation_id: int,
+                                   full_name: str, pr_number: int) -> None:
+    """Fetch and scan after acknowledging GitHub, using independent transactions."""
+    from uuid import UUID
+    from dashboard.worker.audit_worker import process_audit
+    try:
+        settings = get_settings()
+        token = installation_token(settings, installation_id)
+        diff = pull_request_diff(settings, token, full_name, pr_number)
+        with SessionLocal.begin() as db:
+            tenant_scope(db, org_id)
+            audit = db.scalar(select(Audit).where(Audit.id == UUID(audit_id), Audit.org_id == UUID(org_id)))
+            if audit is None:
+                return
+            audit.diff_size = len(diff.encode("utf-8"))
+        process_audit(audit_id, org_id, diff, _language_from_diff(diff))
+    except Exception as exc:
+        logger.warning("github_background_audit_failed org_id=%s audit_id=%s error_type=%s",
+                       org_id, audit_id, type(exc).__name__)
+        with SessionLocal.begin() as db:
+            tenant_scope(db, org_id)
+            audit = db.scalar(select(Audit).where(Audit.id == UUID(audit_id), Audit.org_id == UUID(org_id)))
+            if audit is not None:
+                audit.status = "ERROR"
+                audit.summary = "GitHub diff fetch or audit failed; retry the PR event."
+                audit.completed_at = datetime.now(timezone.utc)
