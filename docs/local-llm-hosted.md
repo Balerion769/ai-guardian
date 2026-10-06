@@ -61,3 +61,14 @@ not a successful inference call; inspect a real completed audit to verify it.
 Large inputs and slow or cold models may exceed the five-second deadline. The
 bridge does not make model findings authoritative; manually review findings and
 remediations. Small models trade inference speed for semantic coverage.
+
+## Live testing observations
+
+On 2026-10-06, a warmed `qwen2.5-coder:1.5b` completed a clean Python review
+through an authenticated Quick Tunnel in 2.07 seconds. Unauthenticated public
+requests returned HTTP 401. These checks demonstrate transport and validated
+inference, not security recall: the same model returned no findings for the
+local eval, shell-command, and SQL-concatenation probes. Static and taint rules
+remain required. The locally installed `gemma3:4b` exceeded the five-second
+deadline in both clean and vulnerable probes. Hosted activation and a completed
+GitHub audit must be checked separately after configuring the Render environment.
