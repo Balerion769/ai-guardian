@@ -27,6 +27,7 @@ from scanner.static_rules import get_added_lines
 
 
 logger = logging.getLogger(__name__)
+MAX_DIFF_DISPLAY_BYTES = 2_000_000
 router = APIRouter()
 _REPOSITORY_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
@@ -291,7 +292,7 @@ async def get_audit_diff(org_id: UUID, audit_id: UUID, request: Request,
     chunks: list[bytes] = []
     size = 0
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             async with client.stream("GET", url, headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github.v3.diff",
@@ -299,8 +300,8 @@ async def get_audit_diff(org_id: UUID, audit_id: UUID, request: Request,
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes():
                     size += len(chunk)
-                    if size > 200_000:
-                        raise HTTPException(status_code=413, detail="GitHub diff exceeds display limit")
+                    if size > MAX_DIFF_DISPLAY_BYTES:
+                        raise HTTPException(status_code=413, detail="GitHub diff exceeds display limit (2 MB). View the full diff on GitHub.")
                     chunks.append(chunk)
     except httpx.HTTPError as exc:
         logger.warning("github_diff_failed org_id=%s audit_id=%s error_type=%s",

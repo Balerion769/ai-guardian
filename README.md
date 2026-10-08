@@ -208,6 +208,8 @@ To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable an
 
 ## Current limits and safe use
 
+- The dashboard diff viewer accepts up to **2 MB** from GitHub and renders **500 lines per page**. Larger diffs link to GitHub via the error message and existing external link. This display allowance is separate from the scanner's 200,000-byte commit-input and 2,000-added-line limits; viewing a large patch does not mean it was fully audited.
+
 - Manual audits: open **Repositories → Audit**, select a GitHub branch, and click **Audit now**. This scans the selected branch's latest commit changes, pinned to its SHA, and opens the saved progress/results page. It does not scan the entire branch or repository. Workspace membership, current GitHub access, active repository state, and shared daily billing limits apply.
 - Manual commit diffs are bounded to 200,000 UTF-8 bytes and 2,000 added lines. Download/access/size failures produce an `ERROR` result rather than a clean scan. Mixed-language patches currently use the first supported file language, as automatic PR audits do. Free inline jobs can be interrupted by a process restart; Redis workers are recommended for durable processing. See [manual audits](docs/manual-audits.md).
 

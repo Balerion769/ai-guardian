@@ -167,9 +167,12 @@ def test_queue_outage_marks_attempt_error(hosted, monkeypatch):
         assert session.scalar(select(Audit.status)) == "ERROR"
 
 
-def test_audit_diff_is_fetched_on_demand_and_not_persisted(hosted, monkeypatch):
+@pytest.mark.parametrize("size, expected", [(200_001, 200), (2_000_000, 200), (2_000_001, 413)])
+def test_audit_diff_is_fetched_on_demand_and_not_persisted(hosted, monkeypatch, size, expected):
     """A linked PR diff is retrieved from GitHub for a member only."""
     client, org_id, _key = hosted
+    prefix = b"diff --git a/x.py b/x.py\n+print('hello')\n"
+    diff = prefix + b"#" * (size - len(prefix))
     with db_session.SessionLocal.begin() as session:
         user = session.scalar(select(User))
         user.github_token_ciphertext = "encrypted"
@@ -197,7 +200,8 @@ def test_audit_diff_is_fetched_on_demand_and_not_persisted(hosted, monkeypatch):
             return None
 
         async def aiter_bytes(self):
-            yield b"diff --git a/x.py b/x.py\n+print('hello')\n"
+            for offset in range(0, len(diff), 65_536):
+                yield diff[offset:offset + 65_536]
 
     class FakeHttpClient:
         async def __aenter__(self):
@@ -214,7 +218,11 @@ def test_audit_diff_is_fetched_on_demand_and_not_persisted(hosted, monkeypatch):
 
     monkeypatch.setattr(audit_routes.httpx, "AsyncClient", lambda **kwargs: FakeHttpClient())
     result = client.get(f"/api/v1/orgs/{org_id}/audits/{audit_id}/diff")
-    assert result.status_code == 200
-    assert "diff --git" in result.text
+    assert result.status_code == expected
+    if expected == 200:
+        assert result.content == diff
+        assert result.headers["cache-control"] == "no-store"
+    else:
+        assert "display limit" in result.json()["detail"]
     with db_session.SessionLocal() as session:
         assert "diff --git" not in session.get(Audit, audit_id).summary

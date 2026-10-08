@@ -61,7 +61,7 @@ async function forward(
         cache: "no-store",
         redirect: "manual",
       },
-      path[2] === "repos" && path.length === 5 ? 20000 : 10000,
+      path.at(-1) === "diff" ? 25000 : path[2] === "repos" && path.length === 5 ? 20000 : 10000,
     );
     const contentType = upstream.headers.get("content-type") ?? "application/json";
     return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {

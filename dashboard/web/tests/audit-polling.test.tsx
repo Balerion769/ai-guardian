@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import AuditDetailPage from "@/app/dashboard/audits/[auditId]/page";
 import type { Audit } from "@/lib/types";
 
@@ -42,6 +42,7 @@ describe("audit status", () => {
     const interval = vi.spyOn(window, "setInterval");
     render(<AuditDetailPage params={Promise.resolve({ auditId: "audit-1" })} />);
     expect(await screen.findByText("Refreshing status every 5 seconds")).toBeInTheDocument();
+    await waitFor(() => expect(interval.mock.calls.some((call) => call[1] === 5_000)).toBe(true));
     const polling = interval.mock.calls.find((call) => call[1] === 5_000);
     expect(polling).toBeDefined();
     await act(async () => {

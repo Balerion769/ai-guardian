@@ -1,5 +1,9 @@
 # AIGuardian architecture
 
+## Bounded diff display
+
+The authenticated audit diff endpoint streams up to 2,000,000 bytes from GitHub with a 20-second network timeout and `Cache-Control: no-store`. The Next.js proxy allows 25 seconds and the browser 30 seconds for diff requests. The dashboard renders 500 patch lines per page, preserving access to every downloaded line without creating thousands of DOM elements at once. Oversized patches return 413 with the 2 MB limit and a suggestion to view GitHub. Scanner input bounds remain independent; a larger display limit does not expand audit coverage. Boundary tests cover 200,001 bytes, exactly 2 MB, and one byte over; UI tests cover pagination and reset when the diff changes.
+
 ## Manual latest-commit audits
 
 The repository detail page contains a paginated branch selector and **Audit now** button. The session-authenticated `GET /api/v1/orgs/{org_id}/repos/{repo_id}/branches` uses the current user's GitHub access. `POST` to the sibling `audits` endpoint accepts only a branch, resolves it once to a commit SHA, locks the organization for shared quota admission, and persists a `QUEUED` audit before dispatch. The tenant-restricted Next.js proxy checks mutation origin. Browser requests contain no source or OAuth credential.

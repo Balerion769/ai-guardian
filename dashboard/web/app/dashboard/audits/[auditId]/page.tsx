@@ -13,6 +13,7 @@ import {
   Timer,
 } from "lucide-react";
 import { getAudit, getAuditDiff, getRepos } from "@/lib/api";
+import { DiffViewer } from "@/components/diff-viewer";
 import type { Audit, Repository } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -164,22 +165,7 @@ export default function AuditDetailPage({ params }: { params: Promise<{ auditId:
           </CardHeader>
           <CardContent>
             {diff ? (
-              <pre className="thin-scroll max-h-[540px] overflow-auto rounded-lg border border-white/[.08] bg-[#0d1218] p-4 font-mono text-[11px] leading-6 text-slate-300">
-                {diff.split("\n").map((line, index) => (
-                  <div
-                    key={index}
-                    className={
-                      line.startsWith("+") && !line.startsWith("+++")
-                        ? "bg-emerald-500/[.08] text-emerald-200"
-                        : line.startsWith("-") && !line.startsWith("---")
-                          ? "bg-red-500/[.08] text-red-200"
-                          : ""
-                    }
-                  >
-                    {line || " "}
-                  </div>
-                ))}
-              </pre>
+              <DiffViewer diff={diff} />
             ) : (
               <div className="flex min-h-44 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-white/10 text-center">
                 <FileCode2 size={22} className="text-slate-600" />

@@ -155,8 +155,17 @@ export async function getAuditDiff(auditId: string, orgId: string): Promise<stri
   const response = await fetchWithTimeout(
     `/api/dashboard/orgs/${encodeURIComponent(orgId)}/audits/${encodeURIComponent(auditId)}/diff`,
     { cache: "no-store" },
+    30000,
   );
   if (response.status === 404) return null;
-  if (!response.ok) throw new ApiError(response.status, "Could not load the linked GitHub diff");
+  if (!response.ok) {
+    let detail = "Could not load the linked GitHub diff";
+    try {
+      detail = (await response.json()).detail ?? detail;
+    } catch {
+      /* Keep the safe status message. */
+    }
+    throw new ApiError(response.status, detail);
+  }
   return response.text();
 }
