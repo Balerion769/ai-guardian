@@ -208,6 +208,8 @@ To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable an
 
 ## Current limits and safe use
 
+- GitHub sign-in accepts any GitHub-verified account and creates an isolated personal workspace. Free Render cold starts can delay login: the button waits for backend readiness, and backend outages are reported separately from credential rejection. OAuth callbacks allow 45 seconds for the backend exchange; a slow startup may still require another attempt.
+
 - The live test uses `qwen2.5-coder:1.5b`. It missed vulnerable local probes and produced a LOW finding on a clean PR. Treat semantic findings and clean results as review aids, not security approval. The temporary tunnel requires an awake local machine and can expire; failures fall back to static analysis with an incomplete-review summary.
 
 - Local LLMs can serve hosted audits through an authenticated HTTPS generation bridge; see [local LLM setup](docs/local-llm-hosted.md). `INLINE_AUDITS=1` permits LLM review without Redis. Keep the machine awake, warm the model, and review real audit results: the five-second deadline can still cause static fallback. A tunnel provider can inspect code in transit.

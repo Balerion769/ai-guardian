@@ -43,6 +43,8 @@ const providers: NextAuthOptions["providers"] = hasGithub
       ]
     : [];
 
+class BackendAuthenticationRejected extends Error {}
+
 async function exchangeGithubToken(
   accessToken: string,
 ): Promise<{ cookie: string; orgId: string }> {
@@ -53,7 +55,10 @@ async function exchangeGithubToken(
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     },
+    45_000,
   );
+  if (response.status === 401 || response.status === 403)
+    throw new BackendAuthenticationRejected("GitHub credentials rejected");
   if (!response.ok) throw new Error("Backend GitHub sign-in failed");
   const cookie = response.headers.get("set-cookie")?.split(";", 1)[0];
   const body: { org_id?: string } = await response.json();
@@ -76,8 +81,9 @@ export const authOptions: NextAuthOptions = {
         user.backendCookie = backend.cookie;
         user.orgId = backend.orgId;
         return true;
-      } catch {
-        return false;
+      } catch (error) {
+        if (error instanceof BackendAuthenticationRejected) return false;
+        return "/login?error=BackendUnavailable";
       }
     },
     async jwt({ token, user, trigger, session }) {

@@ -1,10 +1,10 @@
 /** Cancel stalled API requests without automatic retries of mutations. */
-export async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+export async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 10_000): Promise<Response> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
   if (init.signal?.aborted) cancel();
   init.signal?.addEventListener("abort", cancel, { once: true });
-  const timeout = setTimeout(cancel, 10_000);
+  const timeout = setTimeout(cancel, timeoutMs);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } finally {

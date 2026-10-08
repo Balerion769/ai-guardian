@@ -2,7 +2,13 @@ import { isDemoMode } from "@/lib/auth";
 import { LoginActions } from "@/components/login-actions";
 import { Activity, ArrowUpRight, Fingerprint, GitBranch, LockKeyhole, Shield } from "lucide-react";
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
+  const error = (await searchParams)?.error;
+  const errorMessage = error === "BackendUnavailable"
+    ? "The sign-in server was unavailable. Please try again; your GitHub account has not been blocked."
+    : error === "AccessDenied"
+      ? "GitHub sign-in could not be completed. Try again and allow the requested GitHub authorization."
+      : error ? "Sign-in could not be completed. Please try again." : null;
   return (
     <main className="grid-glow relative flex min-h-screen items-center justify-center overflow-hidden p-5">
       <div className="pointer-events-none absolute -left-24 top-1/3 h-96 w-96 rounded-full bg-emerald-500/[.08] blur-3xl" />
@@ -64,13 +70,13 @@ export default function LoginPage() {
             Connect your GitHub account to see security posture across every linked repository.
           </p>
           <div className="mt-9">
+            {errorMessage ? <p role="alert" className="mb-4 text-sm text-amber-300">{errorMessage}</p> : null}
             <LoginActions demo={isDemoMode} />
           </div>
           <div className="mt-8 flex items-start gap-3 rounded-lg border border-white/[.07] bg-white/[.025] p-4 text-xs leading-5 text-slate-500">
             <LockKeyhole size={16} className="mt-0.5 shrink-0 text-slate-400" />
             <span>
-              Access is limited to your organization. GitHub credentials stay on the server and are
-              never exposed in this page.
+              Sign in with your GitHub account to create your own private workspace. GitHub credentials stay on the server.
             </span>
           </div>
           <div className="mt-12 flex items-center justify-between border-t border-white/[.08] pt-5 text-[11px] text-slate-600">

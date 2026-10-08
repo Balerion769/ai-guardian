@@ -41,6 +41,16 @@ for provider quotas, sign-in, migration roles, and complete-flow verification.
 
 ## Request flow
 
+GitHub sign-in has no username allowlist. Before OAuth, the login button calls a
+same-origin readiness route that waits up to 55 seconds for the free backend.
+The OAuth callback allows 45 seconds for its credential exchange, with a
+60-second Vercel function budget. HTTP 401/403 rejects authentication; network,
+rate-limit, malformed-session, and server failures redirect to a distinct
+`BackendUnavailable` message. No credential or session is accepted on failure.
+The readiness endpoint never receives credentials, and mutation exchanges are
+not retried automatically. User and organization membership checks remain in
+the backend; accepting a new GitHub identity does not grant another tenant's data.
+
 `POST /api/v1/audit` accepts strict `AuditRequest` fields `diff_content` and `language`. Pydantic rejects unknown fields and inputs over 200,000 characters; the route rejects more than 2,000 added lines with HTTP 413. SlowAPI limits the route to 60 requests per minute per client IP.
 
 The route records a SHA-256 hash of the submitted text for diagnostics. It runs `StaticAnalyzer`, then the Python taint pass, then Ollama review. Results are combined by normalized category and line; the higher severity wins. The response contains `status`, `risk_score`, `vulnerabilities`, `summary`, `static_count`, `ai_count`, `latency_ms`, and `model_used`. Each finding has severity, category, description, line reference, remediation, confidence, and a taint marker.
