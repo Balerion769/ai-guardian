@@ -65,9 +65,17 @@ export default function RepositoriesPage() {
           </Badge>
         }
       />
-      <GithubRepoPicker linked={state.repos.map(repo => repo.github_repo_full_name)} onLinked={() => {
-        if (session?.orgId) getRepos(session.orgId).then(repos => setState(current => current ? {...current, repos} : current)).catch(caught => setError(caught instanceof Error ? caught.message : "Refresh failed"));
-      }} />
+      <GithubRepoPicker
+        linked={state.repos.map((repo) => repo.github_repo_full_name)}
+        onLinked={() => {
+          if (session?.orgId)
+            getRepos(session.orgId)
+              .then((repos) => setState((current) => (current ? { ...current, repos } : current)))
+              .catch((caught) =>
+                setError(caught instanceof Error ? caught.message : "Refresh failed"),
+              );
+        }}
+      />
       <Card>
         <CardContent className="flex items-center justify-between gap-3 border-b border-white/[.07] p-4">
           <div className="relative w-full max-w-xs">
@@ -165,10 +173,10 @@ export default function RepositoriesPage() {
                   <TableCell>
                     <Link
                       href={`/dashboard/repos/${repo.id}`}
-                      aria-label={`View ${repo.github_repo_full_name}`}
-                      className="text-slate-500 hover:text-emerald-300"
+                      aria-label={`Audit ${repo.github_repo_full_name}`}
+                      className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300"
                     >
-                      <ArrowUpRight size={16} />
+                      Audit <ArrowUpRight size={16} />
                     </Link>
                   </TableCell>
                 </TableRow>

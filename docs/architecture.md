@@ -1,5 +1,11 @@
 # AIGuardian architecture
 
+## Manual latest-commit audits
+
+The repository detail page contains a paginated branch selector and **Audit now** button. The session-authenticated `GET /api/v1/orgs/{org_id}/repos/{repo_id}/branches` uses the current user's GitHub access. `POST` to the sibling `audits` endpoint accepts only a branch, resolves it once to a commit SHA, locks the organization for shared quota admission, and persists a `QUEUED` audit before dispatch. The tenant-restricted Next.js proxy checks mutation origin. Browser requests contain no source or OAuth credential.
+
+`dashboard/worker/repository_audit_worker.py` receives only audit/org/user IDs, checks membership and repository state, and streams the immutable GitHub commit diff with 200,000-byte and 2,000-added-line bounds. It invokes the existing static/taint/semantic worker and persistence path. Download, credential, and size failures become terminal `ERROR` rows. Inline mode runs after acknowledgement in the API process; Redis mode queues a separate RQ worker. The existing audit detail page polls and shows the pinned branch/commit and findings. Mixed-language patches retain the existing first-supported-language limitation. See [manual audits](manual-audits.md).
+
 ## Free hosting profile
 
 The verified public deployment uses `ai-guardian-theta.vercel.app` for the web

@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowUpRight, GitBranch } from "lucide-react";
 import { getAudits, getRepos } from "@/lib/api";
 import type { Audit, CategoryCount, DailyRisk, Repository } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
+import { RepositoryAuditControl } from "@/components/repository-audit-control";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RiskOverTimeChart, FindingsByCategory } from "@/components/charts";
 import { FindingsTable } from "@/components/findings-table";
@@ -33,10 +34,7 @@ export default function RepositoryPage({ params }: { params: Promise<{ repoId: s
   useEffect(() => {
     if (!session?.orgId || !repoId) return;
     let active = true;
-    Promise.all([
-      getRepos(session.orgId),
-      getAudits(session.orgId, { repoId, timeRange: "90d" }),
-    ])
+    Promise.all([getRepos(session.orgId), getAudits(session.orgId, { repoId, timeRange: "90d" })])
       .then(([repos, audits]) => {
         const repo = repos.find((entry) => entry.id === repoId);
         if (active)
@@ -100,6 +98,14 @@ export default function RepositoryPage({ params }: { params: Promise<{ repoId: s
           )
         }
       />
+      {session?.orgId && (
+        <RepositoryAuditControl
+          key={`${session.orgId}:${state.repo.id}`}
+          orgId={session.orgId}
+          repo={state.repo}
+          demo={session.demo}
+        />
+      )}
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardContent className="p-5">

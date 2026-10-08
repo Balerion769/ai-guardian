@@ -6,6 +6,7 @@ import { authConfigured } from "@/lib/auth";
 import { backendUrl, fetchWithTimeout } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 async function forward(
   request: NextRequest,
@@ -44,22 +45,24 @@ async function forward(
   if (!token.backendCookie)
     return Response.json({ detail: "Backend session unavailable" }, { status: 401 });
 
-  const url = new URL(
-    `${backendUrl()}/api/v1/${path.map(encodeURIComponent).join("/")}`,
-  );
+  const url = new URL(`${backendUrl()}/api/v1/${path.map(encodeURIComponent).join("/")}`);
   url.search = query.toString();
   try {
-    const upstream = await fetchWithTimeout(url, {
-      method: request.method,
-      headers: {
-        Cookie: token.backendCookie,
-        Accept: path.at(-1) === "diff" ? "text/plain" : "application/json",
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    const upstream = await fetchWithTimeout(
+      url,
+      {
+        method: request.method,
+        headers: {
+          Cookie: token.backendCookie,
+          Accept: path.at(-1) === "diff" ? "text/plain" : "application/json",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        cache: "no-store",
+        redirect: "manual",
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      cache: "no-store",
-      redirect: "manual",
-    });
+      path[2] === "repos" && path.length === 5 ? 20000 : 10000,
+    );
     const contentType = upstream.headers.get("content-type") ?? "application/json";
     return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {
       status: upstream.status,

@@ -21,17 +21,24 @@ export class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function apiFetch<T>(path: string, init?: RequestInit, timeoutMs = 10000): Promise<T> {
   let response: Response;
   try {
-    response = await fetchWithTimeout(`/api/dashboard/${path}`, {
-    ...init,
-    credentials: "same-origin",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json", ...init?.headers },
-    });
+    response = await fetchWithTimeout(
+      `/api/dashboard/${path}`,
+      {
+        ...init,
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json", ...init?.headers },
+      },
+      timeoutMs,
+    );
   } catch {
-    throw new ApiError(504, "API unavailable or timed out. A sleeping free service can take about a minute to start; retry after it wakes.");
+    throw new ApiError(
+      504,
+      "API unavailable or timed out. A sleeping free service can take about a minute to start; retry after it wakes.",
+    );
   }
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
@@ -52,15 +59,51 @@ export const getStats = (orgId: string): Promise<Stats> =>
   apiFetch(`orgs/${encodeURIComponent(orgId)}/stats`);
 export const getRepos = (orgId: string): Promise<Repository[]> =>
   apiFetch(`orgs/${encodeURIComponent(orgId)}/repos`);
-export interface GithubRepository { full_name: string; private: boolean; default_branch: string }
-export const discoverRepos = (orgId: string, page: number): Promise<{items: GithubRepository[]; next_page: number | null}> =>
+export interface BranchPage {
+  items: { name: string }[];
+  next_page: number | null;
+}
+export const getRepoBranches = (orgId: string, repoId: string, page = 1): Promise<BranchPage> =>
+  apiFetch(
+    `orgs/${encodeURIComponent(orgId)}/repos/${encodeURIComponent(repoId)}/branches?page=${page}`,
+    undefined,
+    25000,
+  );
+export const startRepoAudit = (
+  orgId: string,
+  repoId: string,
+  branch: string,
+): Promise<{ audit_id: string; commit_sha: string; status: string }> =>
+  apiFetch(
+    `orgs/${encodeURIComponent(orgId)}/repos/${encodeURIComponent(repoId)}/audits`,
+    { method: "POST", body: JSON.stringify({ branch }) },
+    25000,
+  );
+export interface GithubRepository {
+  full_name: string;
+  private: boolean;
+  default_branch: string;
+}
+export const discoverRepos = (
+  orgId: string,
+  page: number,
+): Promise<{ items: GithubRepository[]; next_page: number | null }> =>
   apiFetch(`orgs/${encodeURIComponent(orgId)}/github-repos?page=${page}`);
 export const linkRepo = (orgId: string, fullName: string): Promise<Repository> =>
-  apiFetch(`orgs/${encodeURIComponent(orgId)}/repos`, {method: "POST", body: JSON.stringify({github_repo_full_name: fullName})});
-export const getInstallation = (orgId: string): Promise<{installation_id: number | null}> =>
+  apiFetch(`orgs/${encodeURIComponent(orgId)}/repos`, {
+    method: "POST",
+    body: JSON.stringify({ github_repo_full_name: fullName }),
+  });
+export const getInstallation = (orgId: string): Promise<{ installation_id: number | null }> =>
   apiFetch(`orgs/${encodeURIComponent(orgId)}/github-installation`);
-export const connectInstallation = (orgId: string, installationId: number): Promise<{installation_id: number}> =>
-  apiFetch(`orgs/${encodeURIComponent(orgId)}/github-installation`, {method: "POST", body: JSON.stringify({installation_id: installationId})});
+export const connectInstallation = (
+  orgId: string,
+  installationId: number,
+): Promise<{ installation_id: number }> =>
+  apiFetch(`orgs/${encodeURIComponent(orgId)}/github-installation`, {
+    method: "POST",
+    body: JSON.stringify({ installation_id: installationId }),
+  });
 export const getAudits = (
   orgId: string,
   options: { repoId?: string; timeRange?: "7d" | "30d" | "90d" } = {},

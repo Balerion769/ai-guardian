@@ -15,8 +15,13 @@ export function isAllowedProxyPath(path: string[], orgId: string, method: string
   if (path[0] !== "orgs" || path[1] !== orgId) return false;
   if (path.length === 2) return method === "GET";
   const resource = path[2];
+  if (resource === "repos" && path.length === 5) {
+    if (path[4] === "branches") return method === "GET";
+    if (path[4] === "audits") return method === "POST";
+  }
   if (path.length === 3) {
-    if (resource === "repos" || resource === "github-installation") return method === "GET" || method === "POST";
+    if (resource === "repos" || resource === "github-installation")
+      return method === "GET" || method === "POST";
     if (resource === "github-repos") return method === "GET";
     if (["repos", "audits", "stats", "members", "keys"].includes(resource)) return method === "GET";
     if (resource === "api-keys") return method === "POST";

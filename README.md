@@ -208,6 +208,9 @@ To sample 50 labeled official OWASP BenchmarkPython v0.1 cases (25 vulnerable an
 
 ## Current limits and safe use
 
+- Manual audits: open **Repositories → Audit**, select a GitHub branch, and click **Audit now**. This scans the selected branch's latest commit changes, pinned to its SHA, and opens the saved progress/results page. It does not scan the entire branch or repository. Workspace membership, current GitHub access, active repository state, and shared daily billing limits apply.
+- Manual commit diffs are bounded to 200,000 UTF-8 bytes and 2,000 added lines. Download/access/size failures produce an `ERROR` result rather than a clean scan. Mixed-language patches currently use the first supported file language, as automatic PR audits do. Free inline jobs can be interrupted by a process restart; Redis workers are recommended for durable processing. See [manual audits](docs/manual-audits.md).
+
 - GitHub sign-in accepts any GitHub-verified account and creates an isolated personal workspace. Free Render cold starts can delay login: the button waits for backend readiness, and backend outages are reported separately from credential rejection. OAuth callbacks allow 45 seconds for the backend exchange; a slow startup may still require another attempt.
 
 - The live test uses `qwen2.5-coder:1.5b`. It missed vulnerable local probes and produced a LOW finding on a clean PR. Treat semantic findings and clean results as review aids, not security approval. The temporary tunnel requires an awake local machine and can expire; failures fall back to static analysis with an incomplete-review summary.

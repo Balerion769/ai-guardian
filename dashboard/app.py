@@ -15,6 +15,7 @@ from dashboard.api.billing import billing_router
 from dashboard.api.auth import auth_router
 from dashboard.api.orgs import orgs_router
 from dashboard.api.github_webhooks import github_webhook_router
+from dashboard.api.repository_audits import router as repository_audits_router
 from dashboard.config import get_settings
 from dashboard.observability import configure_sentry, metrics_payload
 
@@ -64,4 +65,5 @@ def create_app() -> FastAPI:
     app.include_router(audits_router)
     app.include_router(billing_router)
     app.include_router(github_webhook_router)
+    app.include_router(repository_audits_router)
     return app
